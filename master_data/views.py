@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable
-from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer
+from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable, ProductGroup, ProductSubGroup, ProductSegment, Product
+from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer, ProductGroupSerializer, ProductSubGroupSerializer, ProductSegmentSerializer, ProductSerializer
 
 
 class UnitViewSet(viewsets.ModelViewSet):
@@ -120,3 +120,59 @@ class RawMaterialAndConsumableViewSet(viewsets.ModelViewSet):
             {"message": f"'{name}' deleted successfully"},
             status=status.HTTP_200_OK
         )
+
+
+class ProductGroupsViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Product Groups.
+    Supports: ?search=group_name
+    """
+    queryset = ProductGroup.objects.all()
+    serializer_class = ProductGroupSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name']
+    ordering_fields = ['name']
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        name = instance.name
+        self.perform_destroy(instance)
+        return Response(
+            {"message": f"Product Group '{name}' deleted successfully"},
+            status=status.HTTP_200_OK
+        )
+
+
+class ProductSubGroupViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Product Sub-Groups.
+    Supports: ?search=sub_group_name
+    """
+    queryset = ProductSubGroup.objects.all()
+    serializer_class = ProductSubGroupSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name']
+    ordering_fields = ['name']
+
+
+class ProductSegmentViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Product Segments.
+    Supports: ?search=segment_name
+    """
+    queryset = ProductSegment.objects.all()
+    serializer_class = ProductSegmentSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name']
+    ordering_fields = ['name']
+
+
+class ProductViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Products.
+    """
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'is_available']

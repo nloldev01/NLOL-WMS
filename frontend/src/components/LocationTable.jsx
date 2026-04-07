@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../utils/api'
 
-const PAGE_SIZE = 8
+const PAGE_SIZE = 10
 
 const TYPE_CHOICES = ['warehouse', 'zone', 'block', 'aisle', 'rack', 'shelf']
 

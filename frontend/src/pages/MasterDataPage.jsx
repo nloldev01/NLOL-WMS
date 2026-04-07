@@ -5,6 +5,9 @@ import FiscalYearsTable from '../components/FiscalYearsTable'
 import AssetsTable from '../components/AssetsTable'
 import LocationsTable from '../components/LocationTable'
 import RawMaterialsTable from '../components/RawMaterialsTable'
+import ProductGroupsTable from '../components/ProductGroupsTable'
+import ProductSegmentsTable from '../components/ProductSegmentsTable'
+import ProductSubGroupsTable from '../components/ProductSubGroupsTable'
 import { useState } from 'react'
 
 const MASTER_ITEMS = [
@@ -13,6 +16,10 @@ const MASTER_ITEMS = [
   { key: 'assets', label: 'Assets', color: '#f43f5e' },
   { key: 'locations', label: 'Locations', color: '#3b82f6' },
   { key: 'raw-materials', label: 'Raw Materials and Consumables', color: '#f59e0b' },
+  { key: 'product-groups', label: 'Product Groups', color: '#22c55e' },
+  { key: 'product-sub-groups', label: 'Product Sub-Groups', color: '#8b5cf6' },
+  { key: 'product-segments', label: 'Product Segments', color: '#ec4899' },
+
   // { key: 'roles',        label: 'Roles',        color: '#3b82f6' },
   // { key: 'departments',  label: 'Departments',  color: '#22c55e' },
   // { key: 'branches',     label: 'Branches',     color: '#8b5cf6' },
@@ -58,6 +65,10 @@ const MasterDataPage = () => {
           {selected === 'assets' && <AssetsTable />}
           {selected === 'locations' && <LocationsTable />}
           {selected === 'raw-materials' && <RawMaterialsTable />}
+          {selected === 'product-groups' && <ProductGroupsTable />}
+          {selected === 'product-sub-groups' && <ProductSubGroupsTable />}
+          {selected === 'product-segments' && <ProductSegmentsTable />}
+
           {/* {selected === 'users'        && <UsersTable />}
           {selected === 'roles'        && <RolesTable />}
           {selected === 'departments'  && <DepartmentsTable />}

@@ -107,7 +107,6 @@ class AssetParameter(models.Model):
         return f"{self.asset.name} — {self.key}: {self.value}"
 
 
-
 class RawMaterialAndConsumable(models.Model):
     TYPE_CHOICES = [
         ('raw_material', 'Raw Material'),
@@ -130,3 +129,75 @@ class RawMaterialAndConsumable(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_type_display()})"
+
+
+class ProductGroup(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+
+    class Meta:
+        db_table = 'master_product_groups'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class ProductSubGroup(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    group = models.ForeignKey(
+        ProductGroup,
+        on_delete=models.PROTECT,
+        related_name='sub_groups'
+    )
+
+    class Meta:
+        db_table = 'master_product_sub_groups'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class ProductSegment(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+
+    class Meta:
+        db_table = 'master_product_segments'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Product(models.Model):
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    is_available = models.BooleanField(default=True)
+    product_group = models.ForeignKey(
+        ProductGroup,
+        on_delete=models.PROTECT,
+        related_name='products'
+    )
+    product_segment = models.ForeignKey(
+        ProductSegment,
+        on_delete=models.PROTECT,
+        related_name='products'
+    )
+    product_sub_group = models.ForeignKey(
+        ProductSubGroup,
+        on_delete=models.PROTECT,
+        related_name='products'
+    )
+    unit = models.ForeignKey(
+        'Unit',
+        on_delete=models.PROTECT,
+        related_name='products'
+    )
+
+    class Meta:
+        db_table = 'products'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+

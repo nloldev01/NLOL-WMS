@@ -4,6 +4,7 @@ import DashboardPage from './pages/DashboardPage';
 import UserPage from './pages/UserPage';
 import MasterDataPage from './pages/MasterDataPage';
 import ErrorPage from './pages/ErrorPage';
+import ProductPage from './pages/ProductPage';
 
 export const BASE_URL = 'http://localhost:8000/api';
 
@@ -17,6 +18,7 @@ function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/users" element={<UserPage />} />
         <Route path="/master-data" element={<MasterDataPage />} />
+        <Route path="/products" element={<ProductPage />} />
 
         {/* Error Pages */}
         <Route path="/403" element={<ErrorPage type="403" />} />

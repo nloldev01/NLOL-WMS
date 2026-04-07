@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Unit, FiscalYear, Asset, AssetParameter, Location, RawMaterialAndConsumable
+from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Asset, ProductGroup, ProductSubGroup, ProductSegment, Product
 
 
 # ── Unit ──────────────────────────────────────────────────────────────────────
@@ -31,6 +31,9 @@ class FiscalYearSerializer(serializers.ModelSerializer):
         if start and end and start >= end:
             raise serializers.ValidationError("end_date must be after start_date.")
         return data
+
+
+# ── Location ──────────────────────────────────────────────────────────────────
 
 class LocationSerializer(serializers.ModelSerializer):
     full_code = serializers.SerializerMethodField()
@@ -64,68 +67,6 @@ class LocationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A location cannot be its own parent.")
         return data
     
-# ── Asset ─────────────────────────────────────────────────────────────────────
-
-class AssetParameterSerializer(serializers.ModelSerializer):
-    unit_name = serializers.CharField(source='unit.name', read_only=True)
-    id = serializers.IntegerField(required=False)
-
-    class Meta:
-        model = AssetParameter
-        fields = ['id', 'key', 'value', 'unit', 'unit_name']
-
-
-class AssetSerializer(serializers.ModelSerializer):
-    parameters = AssetParameterSerializer(many=True, required=False)
-    capacity_unit_name = serializers.CharField(source='capacity_unit.name', read_only=True)
-    location_detail = LocationSerializer(source='location', read_only=True)
-
-    class Meta:
-        model = Asset
-        fields = [
-            'id', 'name', 'asset_type', 'capacity', 'capacity_unit', 
-            'capacity_unit_name', 'status', 'location', 'location_detail', 'parameters'
-        ]
-        extra_kwargs = {
-            'location': {'required': True}
-        }
-
-    def create(self, validated_data):
-        parameters_data = validated_data.pop('parameters', [])
-        asset = Asset.objects.create(**validated_data)
-        for param_data in parameters_data:
-            AssetParameter.objects.create(asset=asset, **param_data)
-        return asset
-
-    def update(self, instance, validated_data):
-        parameters_data = validated_data.pop('parameters', None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        if parameters_data is not None:
-            existing_params = {p.id: p for p in instance.parameters.all()}
-            for param_data in parameters_data:
-                param_id = param_data.get('id')
-                if param_id and param_id in existing_params:
-                    # Update existing
-                    param_obj = existing_params.pop(param_id)
-                    for attr, val in param_data.items():
-                        if attr != 'id':
-                            setattr(param_obj, attr, val)
-                    param_obj.save()
-                else:
-                    # Create new
-                    param_data.pop('id', None) # remove id if present
-                    AssetParameter.objects.create(asset=instance, **param_data)
-            
-            # Delete removed ones
-            for p in existing_params.values():
-                p.delete()
-
-        return instance
-
-
 # ── Raw Materials & Consumables ───────────────────────────────────────────────
 
 class RawMaterialAndConsumableSerializer(serializers.ModelSerializer):
@@ -140,3 +81,60 @@ class RawMaterialAndConsumableSerializer(serializers.ModelSerializer):
 
     def validate_name(self, value):
         return value.strip()
+
+# ── Asset ──────────────────────────────────────────────────────────────────────
+
+class AssetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Asset  # Ensure the Asset model exists in models.py
+        fields = ['id', 'name', 'location', 'parameters', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+# ── Product Group ─────────────────────────────────────────────────────────────
+
+class ProductGroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductGroup
+        fields = ['id', 'name']
+        read_only_fields = ['id']
+
+# ── Product Sub-Group ────────────────────────────────────────────────────────
+
+class ProductSubGroupSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source='group.name', read_only=True)
+
+    class Meta:
+        model = ProductSubGroup
+        fields = ['id', 'name', 'group', 'group_name']
+        read_only_fields = ['id', 'group_name']
+
+
+# ── Product Segment ──────────────────────────────────────────────────────────
+
+class ProductSegmentSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = ProductSegment
+        fields = ['id', 'name']
+        read_only_fields = ['id']
+
+
+# ── Product Serializer ────────────────────────────────────────────────────────
+
+class ProductSerializer(serializers.ModelSerializer):
+    product_group_name = serializers.CharField(source='product_group.name', read_only=True)
+    product_segment_name = serializers.CharField(source='product_segment.name', read_only=True)
+    product_sub_group_name = serializers.CharField(source='product_sub_group.name', read_only=True)
+    unit_name = serializers.CharField(source='unit.name', read_only=True)
+
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'name', 'description', 'is_available',
+            'product_group', 'product_group_name',
+            'product_segment', 'product_segment_name',
+            'product_sub_group', 'product_sub_group_name',
+            'unit', 'unit_name'
+        ]
+        read_only_fields = ['id', 'product_group_name', 'product_segment_name', 'product_sub_group_name', 'unit_name']
+

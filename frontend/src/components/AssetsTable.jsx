@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { apiFetch } from '../utils/api'
 
-const PAGE_SIZE = 8
+const PAGE_SIZE = 10
 const STATUS_CHOICES = ['active', 'inactive', 'maintenance']
 
 const EMPTY_FORM = {

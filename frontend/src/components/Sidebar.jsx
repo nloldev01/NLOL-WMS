@@ -53,16 +53,16 @@ const Sidebar = () => {
       path: '/master-data'
     },
     {
-      id: 'raw-inventories',
-      label: 'Raw Inventories',
-      path: '/raw-inventories',
+      id: 'products',
+      label: 'Products',
+      path: '/products',
     },
     {
       id: 'stocks',
       label: 'Stocks',
       children: [
-        { id: 'stock-overview', label: 'Overview', path: '/stocks/overview' },
-        { id: 'stock-transfer', label: 'Transfer', path: '/stocks/transfer' },
+        { id: 'product-stock', label: 'Product Stock', path: '/stocks/product' },
+        { id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stocks/raw-materials' },
       ],
     },
     {

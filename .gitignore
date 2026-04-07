@@ -130,6 +130,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.qodo
 env/
 venv/
 ENV/
@@ -179,3 +180,22 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Node.js
+node_modules/
+*.log
+
+# Tailwind
+*.css.map
+*.css
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db

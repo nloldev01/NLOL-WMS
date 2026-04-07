@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { apiFetch } from '../utils/api'
 
-const PAGE_SIZE = 8
+const PAGE_SIZE = 10
 
 const TYPE_CHOICES = [
   { value: 'raw_material', label: 'Raw Material' },
-  { value: 'consumable',   label: 'Consumable' },
+  { value: 'consumable', label: 'Consumable' },
 ]
 
 const EMPTY_FORM = {
@@ -17,7 +17,7 @@ const EMPTY_FORM = {
 // ─── Type Badge ───────────────────────────────────────────────────────────────
 const TYPE_COLORS = {
   raw_material: 'bg-blue-50 text-blue-600 border border-blue-200',
-  consumable:   'bg-amber-50 text-amber-600 border border-amber-200',
+  consumable: 'bg-amber-50 text-amber-600 border border-amber-200',
 }
 
 const TypeBadge = ({ type, label }) => (
@@ -39,7 +39,7 @@ const RawMaterialForm = ({ initial, units, onSubmit, onClose, loading }) => {
 
   const handleSubmit = () => {
     if (!form.name.trim()) return setError('Name is required.')
-    if (!form.type)        return setError('Type is required.')
+    if (!form.type) return setError('Type is required.')
     setError('')
     onSubmit({
       name: form.name.trim(),
@@ -143,19 +143,19 @@ const RawMaterialDetail = ({ item }) => {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const RawMaterialsTable = () => {
-  const [items, setItems]       = useState([])
-  const [units, setUnits]       = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState(null)
-  const [search, setSearch]     = useState('')
+  const [items, setItems] = useState([])
+  const [units, setUnits] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
-  const [page, setPage]         = useState(1)
+  const [page, setPage] = useState(1)
 
-  const [modal, setModal]           = useState(null) // 'create' | 'edit' | 'view'
-  const [selected, setSelected]     = useState(null)
+  const [modal, setModal] = useState(null) // 'create' | 'edit' | 'view'
+  const [selected, setSelected] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const [toast, setToast]           = useState(null)
+  const [toast, setToast] = useState(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -174,7 +174,7 @@ const RawMaterialsTable = () => {
       if (rmRes && uRes) {
         const [rm, u] = await Promise.all([rmRes.json(), uRes.json()])
         setItems(Array.isArray(rm) ? rm : rm.results || [])
-        setUnits(Array.isArray(u)  ? u  : u.results  || [])
+        setUnits(Array.isArray(u) ? u : u.results || [])
       }
     } catch {
       setError('Failed to load data')
@@ -240,12 +240,12 @@ const RawMaterialsTable = () => {
 
   const filtered = items.filter(item => {
     const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase())
-    const matchType   = !typeFilter || item.type === typeFilter
+    const matchType = !typeFilter || item.type === typeFilter
     return matchSearch && matchType
   })
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   if (error) return <div className="text-red-500 text-sm p-6">{error}</div>
 

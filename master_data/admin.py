@@ -1,6 +1,5 @@
 from django.contrib import admin
-from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable
-
+from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Product, ProductGroup, ProductSubGroup, ProductSegment
 
 @admin.register(Unit)
 class UnitAdmin(admin.ModelAdmin):
@@ -32,3 +31,29 @@ class RawMaterialAndConsumableAdmin(admin.ModelAdmin):
     list_filter   = ['type']
     search_fields = ['name']
     ordering      = ['name']
+
+
+@admin.register(ProductGroup)
+class ProductGroupAdmin(admin.ModelAdmin):
+    list_display = ('name',)
+    search_fields = ('name',)
+
+
+@admin.register(ProductSubGroup)
+class ProductSubGroupAdmin(admin.ModelAdmin):
+    list_display = ('name', 'group')
+    search_fields = ('name', 'group__name')
+
+
+@admin.register(ProductSegment)
+class ProductSegmentAdmin(admin.ModelAdmin):
+    list_display = ('name',)
+    search_fields = ('name',)
+
+
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ('name', 'product_group', 'product_segment', 'product_sub_group', 'unit', 'is_available')
+    list_filter = ('is_available', 'product_group', 'product_segment', 'product_sub_group')
+    search_fields = ('name', 'description', 'product_group__name', 'product_segment__name', 'product_sub_group__name')
+

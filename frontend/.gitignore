@@ -1,0 +1,14 @@
+# Tailwind
+*.css.map
+*.css
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
