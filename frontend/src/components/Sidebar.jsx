@@ -61,10 +61,10 @@ const Sidebar = () => {
       id: 'stocks',
       label: 'Stocks',
       children: [
-        { id: 'product-stock', label: 'Product Stock', path: '/stocks/product' },
-        { id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stocks/raw-materials' },
+        { id: 'product-stock', label: 'Product Stock', path: '/stock/product' },
+        { id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stock/raw-materials' },
       ],
-    },
+    },  
     {
       id: 'users',
       label: 'Users',

@@ -1,4 +1,6 @@
 from django.db import models
+import uuid
+from django.db import connection
 
 
 class Unit(models.Model):
@@ -32,6 +34,13 @@ class FiscalYear(models.Model):
     def __str__(self):
         return self.name
 
+def generate_code():
+    """Generate a unique code, retrying if collision occurs"""
+    from master_data.models import Location  # Import here to avoid circular imports
+    
+    while True:
+        return uuid.uuid4().hex[:8]
+            
 class Location(models.Model):
     TYPE_CHOICES = [
         ('warehouse', 'Warehouse'),
@@ -43,6 +52,7 @@ class Location(models.Model):
     ]
 
     name       = models.CharField(max_length=255)
+    code = models.CharField(max_length=8, unique=False, default='')
     short_code = models.CharField(max_length=20)
     type       = models.CharField(max_length=50, choices=TYPE_CHOICES)
     parent     = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='children')
@@ -75,20 +85,24 @@ class Location(models.Model):
 
 class Asset(models.Model):
     STATUS_CHOICES = [
-        ('active',      'Active'),
-        ('inactive',    'Inactive'),
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
         ('maintenance', 'Maintenance'),
     ]
 
-    name          = models.CharField(max_length=100)
-    asset_type    = models.CharField(max_length=100)
-    capacity      = models.FloatField(null=True, blank=True)
-    capacity_unit = models.ForeignKey('master_data.Unit', null=True, blank=True, on_delete=models.SET_NULL)
-    status        = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    name = models.CharField(max_length=100)
+    asset_type = models.CharField(max_length=100)
+    capacity = models.FloatField(null=True, blank=True)
+    capacity_unit = models.ForeignKey(
+        'master_data.Unit',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+
     location = models.ForeignKey(
         'Location',
-        null=False,
-        blank=False,
         on_delete=models.PROTECT,
         related_name='assets'
     )
@@ -98,10 +112,19 @@ class Asset(models.Model):
 
 
 class AssetParameter(models.Model):
-    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='parameters')
-    key   = models.CharField(max_length=100)
-    value = models.CharField(max_length=255)
-    unit  = models.ForeignKey('master_data.Unit', null=True, blank=True, on_delete=models.SET_NULL)
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name='parameters'  # IMPORTANT
+    )
+    key = models.CharField(max_length=100)
+    value = models.TextField()  # better than CharField
+    unit = models.ForeignKey(
+        'master_data.Unit',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
 
     def __str__(self):
         return f"{self.asset.name} — {self.key}: {self.value}"
@@ -130,7 +153,28 @@ class RawMaterialAndConsumable(models.Model):
     def __str__(self):
         return f"{self.name} ({self.get_type_display()})"
 
+class Supplier(models.Model):
+    name = models.CharField(max_length=255, unique=True)
 
+    contact_person = models.CharField(max_length=255, blank=True, null=True)
+
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+
+    address = models.TextField(blank=True, null=True)
+
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'suppliers'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+    
 class ProductGroup(models.Model):
     name = models.CharField(max_length=255, unique=True)
 
@@ -168,6 +212,56 @@ class ProductSegment(models.Model):
     def __str__(self):
         return self.name
 
+class ProductBatch(models.Model):
+    product = models.ForeignKey(
+        'Product',
+        on_delete=models.PROTECT,
+        related_name='batches'
+    )
+
+    batch_number = models.CharField(max_length=100)
+
+    supplier = models.ForeignKey(
+        'Supplier',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True
+    )
+
+    source_type = models.CharField(
+        max_length=50,
+        choices=[
+            ('purchase', 'Purchase'),
+            ('production', 'Production'),
+            ('return', 'Return'),
+            ('transfer', 'Transfer'),
+        ],
+        default='purchase'
+    )
+
+    source_reference = models.CharField(
+        max_length=255,
+        blank=True
+    )
+
+    purchase_date = models.DateField(null=True, blank=True)
+    manufacture_date = models.DateField(null=True, blank=True)
+    expiry_date = models.DateField(null=True, blank=True)
+
+    cost_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('product', 'batch_number')
+
+    def __str__(self):
+        return f"{self.product.name} - {self.batch_number}"
 
 class Product(models.Model):
     name = models.CharField(max_length=255)

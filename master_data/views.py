@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable, ProductGroup, ProductSubGroup, ProductSegment, Product
-from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer, ProductGroupSerializer, ProductSubGroupSerializer, ProductSegmentSerializer, ProductSerializer
+from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable, ProductGroup, ProductSubGroup, ProductSegment, Product, Supplier
+from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer, ProductGroupSerializer, ProductSubGroupSerializer, ProductSegmentSerializer, ProductSerializer, SupplierSerializer
 
 
 class UnitViewSet(viewsets.ModelViewSet):
@@ -168,11 +168,12 @@ class ProductSegmentViewSet(viewsets.ModelViewSet):
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for Products.
-    """
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'is_available']
+
+class SupplierViewSet(viewsets.ModelViewSet):
+    queryset = Supplier.objects.all().order_by('name')
+    serializer_class = SupplierSerializer

@@ -19,7 +19,7 @@ class RawMaterialStock(models.Model):
         related_name='stock_entries',
     )
     location = models.ForeignKey(
-        'Location',
+        'master_data.Location',
         on_delete=models.PROTECT,
         related_name='stock_entries',
     )
@@ -64,14 +64,14 @@ class RawMaterialStockLog(models.Model):
 
     # Where it moved (from/to)
     location = models.ForeignKey(
-        'Location',
+        'master_data.Location',
         on_delete=models.PROTECT,
         related_name='stock_logs',
         help_text="Primary location affected by this movement.",
     )
     # Populated only for transfers — the counterpart location
     counterpart_location = models.ForeignKey(
-        'Location',
+        'master_data.Location',
         null=True,
         blank=True,
         on_delete=models.PROTECT,
@@ -86,12 +86,6 @@ class RawMaterialStockLog(models.Model):
     # Snapshot of stock at this location AFTER this movement
     balance_after = models.DecimalField(max_digits=14, decimal_places=4)
 
-    # Optional context
-    unit_cost = models.DecimalField(
-        max_digits=14, decimal_places=4,
-        null=True, blank=True,
-        help_text="Cost per unit at time of movement (for purchase/usage costing).",
-    )
     reference = models.CharField(
         max_length=255, blank=True,
         help_text="PO number, production order ID, transfer slip, etc.",
@@ -155,7 +149,6 @@ class RawMaterialStockLog(models.Model):
         performed_by=None,
         reference='',
         notes='',
-        unit_cost=None,
         counterpart_location=None,
     ):
         """
@@ -200,7 +193,6 @@ class RawMaterialStockLog(models.Model):
             movement_type=movement_type,
             quantity=quantity,
             balance_after=new_balance,
-            unit_cost=unit_cost,
             reference=reference,
             notes=notes,
             performed_by=performed_by,
@@ -219,25 +211,7 @@ class RawMaterialStockLog(models.Model):
                 performed_by=performed_by,
                 reference=reference,
                 notes=notes,
-                unit_cost=unit_cost,
                 counterpart_location=location,
             )
 
         return log
-
-
-class Location(models.Model):
-    """
-    A physical or logical place where stock can be held.
-    e.g. Main Warehouse, Production Floor, Mixing Area, Cold Storage.
-    """
-    name = models.CharField(max_length=255, unique=True)
-    description = models.TextField(blank=True)
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        db_table = 'raw_material_locations'
-        ordering = ['name']
-
-    def __str__(self):
-        return self.name

@@ -8,6 +8,7 @@ import RawMaterialsTable from '../components/RawMaterialsTable'
 import ProductGroupsTable from '../components/ProductGroupsTable'
 import ProductSegmentsTable from '../components/ProductSegmentsTable'
 import ProductSubGroupsTable from '../components/ProductSubGroupsTable'
+import SuppliersTable from '../components/SuppliersTable'
 import { useState } from 'react'
 
 const MASTER_ITEMS = [
@@ -19,6 +20,7 @@ const MASTER_ITEMS = [
   { key: 'product-groups', label: 'Product Groups', color: '#22c55e' },
   { key: 'product-sub-groups', label: 'Product Sub-Groups', color: '#8b5cf6' },
   { key: 'product-segments', label: 'Product Segments', color: '#ec4899' },
+  { key: 'suppliers', label: 'Suppliers', color: '#ec4899' },
 
   // { key: 'roles',        label: 'Roles',        color: '#3b82f6' },
   // { key: 'departments',  label: 'Departments',  color: '#22c55e' },
@@ -68,6 +70,7 @@ const MasterDataPage = () => {
           {selected === 'product-groups' && <ProductGroupsTable />}
           {selected === 'product-sub-groups' && <ProductSubGroupsTable />}
           {selected === 'product-segments' && <ProductSegmentsTable />}
+          {selected === 'suppliers' && <SuppliersTable />}
 
           {/* {selected === 'users'        && <UsersTable />}
           {selected === 'roles'        && <RolesTable />}

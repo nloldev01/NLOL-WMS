@@ -5,6 +5,8 @@ import UserPage from './pages/UserPage';
 import MasterDataPage from './pages/MasterDataPage';
 import ErrorPage from './pages/ErrorPage';
 import ProductPage from './pages/ProductPage';
+import RawMaterialStockPage from './pages/RawMaterialStockPage';
+import StockMovementPage from './pages/StockMovementPage';
 
 export const BASE_URL = 'http://localhost:8000/api';
 
@@ -19,6 +21,8 @@ function App() {
         <Route path="/users" element={<UserPage />} />
         <Route path="/master-data" element={<MasterDataPage />} />
         <Route path="/products" element={<ProductPage />} />
+        <Route path="/stock/raw-materials" element={<RawMaterialStockPage />} />
+        <Route path="/stock/raw-materials-logs" element={<StockMovementPage />} />
 
         {/* Error Pages */}
         <Route path="/403" element={<ErrorPage type="403" />} />

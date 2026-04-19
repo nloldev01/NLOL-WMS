@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Asset, ProductGroup, ProductSubGroup, ProductSegment, Product
+from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Asset, AssetParameter, ProductGroup, ProductSubGroup, ProductSegment, Product, Supplier
 
 
 # ── Unit ──────────────────────────────────────────────────────────────────────
@@ -7,8 +7,8 @@ from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Asset,
 class UnitSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Unit
-        fields = ['id', 'name', 'code', 'symbol', 'description', 'is_active', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'code', 'symbol', 'description', 'is_active']
+        read_only_fields = ['id']
 
     def validate_code(self, value):
         return value.upper().strip()
@@ -46,6 +46,7 @@ class LocationSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'short_code',
+            'code',
             'type',
             'parent',
             'parent_name',
@@ -84,11 +85,32 @@ class RawMaterialAndConsumableSerializer(serializers.ModelSerializer):
 
 # ── Asset ──────────────────────────────────────────────────────────────────────
 
-class AssetSerializer(serializers.ModelSerializer):
+class AssetParameterSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Asset  # Ensure the Asset model exists in models.py
-        fields = ['id', 'name', 'location', 'parameters', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        model = AssetParameter
+        fields = ['id', 'key', 'value', 'unit']
+
+
+class AssetSerializer(serializers.ModelSerializer):
+    parameters = AssetParameterSerializer(many=True, read_only=True)
+    location_name = serializers.CharField(source='location.name', read_only=True)
+    capacity_unit_symbol = serializers.CharField(source='capacity_unit.symbol', read_only=True)
+
+    class Meta:
+        model = Asset
+        fields = [
+            'id',
+            'name',
+            'asset_type',
+            'capacity',
+            'capacity_unit',
+            'capacity_unit_symbol',
+            'status',
+            'location',
+            'location_name',
+            'parameters',
+        ]
+        read_only_fields = ['id']
 
 # ── Product Group ─────────────────────────────────────────────────────────────
 
@@ -138,3 +160,18 @@ class ProductSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'product_group_name', 'product_segment_name', 'product_sub_group_name', 'unit_name']
 
+class SupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = [
+            'id',
+            'name',
+            'contact_person',
+            'phone',
+            'email',
+            'address',
+            'is_active',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']

@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createRoot } from 'react-dom/client'
+import { QRCodeCanvas } from 'qrcode.react';
 import { apiFetch } from '../utils/api'
+import { jsPDF } from "jspdf";
 
 const PAGE_SIZE = 10
 
@@ -22,19 +25,8 @@ const TYPE_COLORS = {
   shelf: 'bg-rose-50 text-rose-600 border-rose-200',
 }
 
-const TYPE_INDENT = {
-  warehouse: 0,
-  zone: 1,
-  block: 2,
-  aisle: 3,
-  rack: 4,
-  shelf: 5,
-}
-
-// ─── Auth Header ──────────────────────────────────────────────────────────────
-
 // ─── Tree Node ────────────────────────────────────────────────────────────────
-const TreeNode = ({ node, depth = 0, onEdit, onDelete }) => {
+const TreeNode = ({ node, depth = 0, onEdit, onDelete, onViewQR }) => {
   const [expanded, setExpanded] = useState(true)
   const hasChildren = node.children?.length > 0
 
@@ -78,6 +70,10 @@ const TreeNode = ({ node, depth = 0, onEdit, onDelete }) => {
         {/* Actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
+            onClick={() => onViewQR(node)}
+            className="rounded-md bg-blue-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-600"
+          >QR</button>
+          <button
             onClick={() => onEdit(node)}
             className="rounded-md bg-green-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-600"
           >Edit</button>
@@ -90,7 +86,7 @@ const TreeNode = ({ node, depth = 0, onEdit, onDelete }) => {
 
       {/* Children */}
       {expanded && hasChildren && node.children.map(child => (
-        <TreeNode key={child.id} node={child} depth={depth + 1} onEdit={onEdit} onDelete={onDelete} />
+        <TreeNode key={child.id} node={child} depth={depth + 1} onEdit={onEdit} onDelete={onDelete} onViewQR={onViewQR} />
       ))}
     </div>
   )
@@ -111,6 +107,101 @@ const buildTree = (locations) => {
   return roots
 }
 
+// ─── QR Modal Component ────────────────────────────────────────────────────────
+const QRModal = ({ location, onClose }) => {
+  const qrRef = useRef();
+
+  const qrData = {
+    type: 'location',
+    code: location.code || location.short_code
+  };
+
+  const handleDownload = () => {
+    const originalCanvas = qrRef.current?.querySelector('canvas');
+    if (!originalCanvas) return;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Increased text space to 80px for two lines of text
+    const textSpace = 80;
+    canvas.width = originalCanvas.width;
+    canvas.height = originalCanvas.height + textSpace;
+
+    // Fill background white
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw QR Code
+    ctx.drawImage(originalCanvas, 0, 0);
+
+    // Draw Text Labels
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+
+    // Line 1: Location Name
+    ctx.font = 'bold 20px Inter, system-ui, sans-serif';
+    ctx.fillText(location.name, canvas.width / 2, originalCanvas.height + 30);
+
+    // Line 2: Location Code
+    ctx.font = '20px monospace'; // Monospace looks better for codes
+    ctx.fillText(location.code || location.short_code, canvas.width / 2, originalCanvas.height + 55);
+
+    // Trigger Download
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = `Label-${location.short_code}.png`;
+    link.click();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-xl">
+        <div className="px-6 py-4 border-b flex justify-between items-center">
+          <h3 className="font-semibold text-gray-800">Download Label</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-black text-xl">×</button>
+        </div>
+
+        <div className="p-8 flex flex-col items-center text-center">
+          <div ref={qrRef} className="p-2 border border-gray-100 rounded-lg">
+            <QRCodeCanvas
+              value={JSON.stringify(qrData)}
+              size={200}
+              level="H"
+              includeMargin={false}
+            />
+          </div>
+
+          {/* Visual labels for UI */}
+          <div className="mt-4">
+            <p className="text-md font-bold text-gray-800 leading-tight">
+              {location.name}
+            </p>
+            <p className="text-s font-mono font-bold text-gray-500 leading-tight">
+              {location.code || location.short_code}
+            </p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t flex gap-2">
+          <button
+            onClick={handleDownload}
+            className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700"
+          >
+            Download PNG
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 border border-gray-300 py-2 rounded-lg font-medium hover:bg-gray-50"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function LocationsTable() {
   const [locations, setLocations] = useState([])
@@ -118,7 +209,7 @@ export default function LocationsTable() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [page, setPage] = useState(1)
-  const [view, setView] = useState('list') // 'list' | 'tree'
+  const [view, setView] = useState('list')
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editLoc, setEditLoc] = useState(null)
@@ -127,6 +218,15 @@ export default function LocationsTable() {
   const [submitting, setSubmitting] = useState(false)
 
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [qrTarget, setQrTarget] = useState(null)
+  
+  const [selectedIds, setSelectedIds] = useState([])
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    setSelectedIds([]); // Clear selection when exiting mode
+  };
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchLocations = async () => {
@@ -259,6 +359,134 @@ export default function LocationsTable() {
     !form.type || (allowedParentTypes[form.type] || []).includes(l.type)
   )
 
+  // ── Selection helpers ──────────────────────────────────────────────────────
+  const toggleSelect = (id) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const allPageSelected = paginated.length > 0 && paginated.every(l => selectedIds.includes(l.id))
+
+  const toggleSelectAll = () => {
+    if (allPageSelected) {
+      setSelectedIds(prev => prev.filter(id => !paginated.some(l => l.id === id)))
+    } else {
+      setSelectedIds(prev => [...new Set([...prev, ...paginated.map(l => l.id)])])
+    }
+  }
+
+  const handleBulkPrint = async () => {
+    const { jsPDF } = await import('jspdf');
+    const QRCode = await import('qrcode');
+    
+    const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    const selectedData = locations.filter(l => selectedIds.includes(l.id));
+
+    // Grid Settings for A4 (210mm x 297mm)
+    const cols = 2;
+    const rows = 4;
+    const pageWidth = 210;
+    const pageHeight = 297;
+    
+    // Calculate label dimensions to fit exactly 2x4
+    const marginX = 3;     
+    const marginY = 3;     
+    const spacingX = 3;    
+    const spacingY = 3;
+    
+    const labelWidth = (pageWidth - (2 * marginX) - spacingX) / 2;  // ~98mm per label
+    const labelHeight = (pageHeight - (2 * marginY) - (3 * spacingY)) / 4;  // ~70mm per label
+
+    for (let i = 0; i < selectedData.length; i++) {
+        const loc = selectedData[i];
+        const pageItemIndex = i % (cols * rows);
+        const col = pageItemIndex % cols;
+        const row = Math.floor(pageItemIndex / cols);
+
+        if (i > 0 && pageItemIndex === 0) pdf.addPage();
+
+        await new Promise((resolve) => {
+            // Make QR code square - use the smaller dimension
+            const qrSizeInMM = labelWidth * 0.3;// Leave 20mm for text
+            const qrSizeInPx = Math.floor(qrSizeInMM * 3.78); // Convert mm to pixels (96 DPI)
+            const labelHeightInPx = 150; // Fixed pixel height for text area
+            
+            // Create canvas for QR code only
+            const qrCanvas = document.createElement('canvas');
+            qrCanvas.width = qrSizeInPx;
+            qrCanvas.height = qrSizeInPx;
+
+            const qrValue = JSON.stringify({ type: 'location', code: loc.code || loc.short_code });
+
+            // Generate QR code
+            QRCode.toCanvas(qrCanvas, qrValue, { 
+                width: qrSizeInPx,
+                height: qrSizeInPx,
+                margin: 0.8, 
+                errorCorrectionLevel: 'H' 
+            }, (err) => {
+                if (err) {
+                    console.error(err);
+                    resolve();
+                    return;
+                }
+
+                // Create final canvas with QR + labels
+                const finalCanvas = document.createElement('canvas');
+                finalCanvas.width = qrSizeInPx;
+                finalCanvas.height = qrSizeInPx + labelHeightInPx;
+                const ctx = finalCanvas.getContext('2d');
+
+                // White background
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+                // Draw the square QR code at top
+                ctx.drawImage(qrCanvas, 0, 0, qrSizeInPx, qrSizeInPx);
+
+                // Add text labels below
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'center';
+
+                // Name
+                ctx.font = 'bold 24px Arial';
+                const displayName = loc.name.length > 20 ? loc.name.substring(0, 18) + '..' : loc.name;
+                ctx.fillText(displayName, qrSizeInPx / 2, qrSizeInPx + 45);
+
+                // Code
+                ctx.font = '24px Monospace';
+                ctx.fillText(loc.code || loc.short_code, qrSizeInPx / 2, qrSizeInPx + 90);
+
+                // Add to PDF - maintain aspect ratio by using square dimension for both width and height of QR portion
+                const xPos = marginX + (col * (labelWidth + spacingX));
+                const yPos = marginY + (row * (labelHeight + spacingY));
+                const imgData = finalCanvas.toDataURL('image/png');
+                
+                // Calculate the actual dimensions to maintain square QR code
+                const qrDisplaySize = qrSizeInMM; // Square size in mm
+                const totalDisplayHeight = qrSizeInMM + (labelHeightInPx / 3.78); // QR + text area
+                
+                // Center the label horizontally within the cell
+                const xOffset = (labelWidth - qrDisplaySize) / 2;
+                
+                pdf.addImage(imgData, 'PNG', xPos + xOffset, yPos, qrDisplaySize, totalDisplayHeight);
+                
+                resolve();
+            });
+        });
+    }
+
+    pdf.save(`Warehouse_Labels_${new Date().getTime()}.pdf`);
+    setIsSelectionMode(false);
+    setSelectedIds([]);
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
@@ -268,6 +496,26 @@ export default function LocationsTable() {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">Locations</h2>
           <div className="flex items-center gap-3">
+            {/* Selection Mode Toggle */}
+            {!isSelectionMode ? (
+              <button
+                onClick={toggleSelectionMode}
+                className="flex items-center gap-1.5 rounded-lg bg-gray-100 text-gray-700 px-3 py-1.5 text-xs font-medium hover:bg-gray-200"
+              >
+                Print Mode
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleBulkPrint}
+                  disabled={selectedIds.length === 0}
+                  className="flex items-center gap-1.5 rounded-lg bg-indigo-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  Download PDF ({selectedIds.length})
+                </button>
+                <button onClick={toggleSelectionMode} className="text-xs text-red-500 hover:underline">Cancel</button>
+              </div>
+            )}
 
             {/* View toggle */}
             <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
@@ -346,6 +594,7 @@ export default function LocationsTable() {
                 node={node}
                 onEdit={openEdit}
                 onDelete={setDeleteTarget}
+                onViewQR={setQrTarget}
               />
             ))}
           </div>
@@ -356,6 +605,11 @@ export default function LocationsTable() {
           <table className="w-full text-sm text-left">
             <thead className="bg-primary text-white text-xs uppercase">
               <tr>
+                {isSelectionMode && (
+                  <th className="px-4 py-3 w-10">
+                    <input type="checkbox" checked={allPageSelected} onChange={toggleSelectAll} />
+                  </th>
+                )}
                 <th className="px-6 py-3 w-10">No</th>
                 <th className="px-6 py-3">Name</th>
                 <th className="px-6 py-3">Short Code</th>
@@ -367,12 +621,21 @@ export default function LocationsTable() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {paginated.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-10 text-center text-gray-400">No locations found</td>
-                </tr>
-              ) : paginated.map((loc, idx) => (
-                <tr key={loc.id} className="hover:bg-gray-50 transition-colors">
+              {paginated.map((loc, idx) => (
+                <tr
+                  key={loc.id}
+                  className={`hover:bg-gray-50 transition-colors ${selectedIds.includes(loc.id) ? 'bg-indigo-50' : ''}`}
+                >
+                  {isSelectionMode && (
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(loc.id)}
+                        onChange={() => toggleSelect(loc.id)}
+                        className="rounded border-gray-300 cursor-pointer"
+                      />
+                    </td>
+                  )}
                   <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                   <td className="px-6 py-3 font-medium text-gray-900">{loc.name}</td>
                   <td className="px-6 py-3">
@@ -394,6 +657,10 @@ export default function LocationsTable() {
                   </td>
                   <td className="px-6 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setQrTarget(loc)}
+                        className="rounded-md bg-blue-500 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600"
+                      >QR</button>
                       <button
                         onClick={() => openEdit(loc)}
                         className="rounded-md bg-green-500 px-3 py-1 text-xs font-medium text-white hover:bg-green-600"
@@ -545,6 +812,9 @@ export default function LocationsTable() {
           </div>
         </div>
       )}
+
+      {/* QR Modal */}
+      {qrTarget && <QRModal location={qrTarget} onClose={() => setQrTarget(null)} />}
 
       {/* Delete Confirm */}
       {deleteTarget && (
