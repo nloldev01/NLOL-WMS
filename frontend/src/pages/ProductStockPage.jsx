@@ -5,26 +5,31 @@ import { apiFetch } from '../utils/api'
 
 const PAGE_SIZE = 10
 
-const RawMaterialStockPage = () => {
+const ProductStockPage = () => {
   const [stocks, setStocks]       = useState([])
-  const [materials, setMaterials] = useState([])
+  const [products, setProducts]   = useState([])
   const [locations, setLocations] = useState([])
+  const [filterBatches, setFilterBatches] = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [page, setPage]           = useState(1)
   const [error, setError]         = useState('')
-  const [filters, setFilters]     = useState({ material__type: '', location: '' })
+  const [filters, setFilters]     = useState({ location: '', product: '', batch: '' })
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
 
   useEffect(() => {
-    fetchMaterials()
+    fetchProducts()
     fetchLocations()
   }, [])
 
   useEffect(() => {
     fetchStocks()
   }, [search, filters])
+
+  useEffect(() => {
+    fetchFilterBatches(filters.product)
+  }, [filters.product])
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -40,10 +45,11 @@ const RawMaterialStockPage = () => {
     try {
       const params = new URLSearchParams()
       if (search) params.append('search', search)
-      if (filters.material__type) params.append('material__type', filters.material__type)
       if (filters.location) params.append('location', filters.location)
+      if (filters.product)  params.append('product',  filters.product)
+      if (filters.batch)    params.append('batch',    filters.batch)
       
-      const res = await apiFetch(`/raw-materials-stock/stock/?${params.toString()}`)
+      const res = await apiFetch(`/products-stock/stock/?${params.toString()}`)
       if (res && res.ok) {
         const data = await res.json()
         setStocks(Array.isArray(data) ? data : (data.results ?? []))
@@ -52,25 +58,25 @@ const RawMaterialStockPage = () => {
       }
     } catch {
       setStocks([])
-      setError('Failed to load stock data')
+      setError('Failed to load product stock data')
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchMaterials = async () => {
+  const fetchProducts = async () => {
     try {
-      const res = await apiFetch('/master-data/raw-materials-and-consumables/')
+      const res = await apiFetch('/master-data/products/')
       if (res && res.ok) {
         const data = await res.json()
-        setMaterials(Array.isArray(data) ? data : (data.results ?? []))
+        setProducts(Array.isArray(data) ? data : (data.results ?? []))
       }
-    } catch { console.error('Failed to load materials') }
+    } catch { console.error('Failed to load products') }
   }
 
   const fetchLocations = async () => {
     try {
-      const res = await apiFetch('/raw-materials-stock/locations/')
+      const res = await apiFetch('/master-data/locations/')
       if (res && res.ok) {
         const data = await res.json()
         setLocations(Array.isArray(data) ? data : (data.results ?? []))
@@ -78,18 +84,26 @@ const RawMaterialStockPage = () => {
     } catch { console.error('Failed to load locations') }
   }
 
-  // Since we now filter on backend, this is just for safety/offline feel if needed, 
-  // but we can trust the backend results. We still use paginated for showing.
-  const filtered = stocks
+  const fetchFilterBatches = async (pid) => {
+    try {
+      let q = '?batch_type=PRD'
+      if (pid) q += `&product=${pid}`
+      const res = await apiFetch(`/inventory-core/batches/${q}`)
+      if (res && res.ok) {
+        const data = await res.json()
+        setFilterBatches(Array.isArray(data) ? data : (data.results ?? []))
+      }
+    } catch { console.error('Failed to load filter batches') }
+  }
 
+  const filtered = stocks
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  // Badge color based on quantity
   const getStockBadge = (qty) => {
     if (qty <= 0)  return 'bg-red-50 text-red-600'
-    if (qty < 50)  return 'bg-yellow-50 text-yellow-600'
+    if (qty < 20)  return 'bg-yellow-50 text-yellow-600'
     return 'bg-green-50 text-green-600'
   }
 
@@ -99,30 +113,23 @@ const RawMaterialStockPage = () => {
       <div className="ml-16">
         <Topbar />
         <main className="p-6">
+          <p className="text-xs text-gray-400 mb-3">Products / Stock</p>
 
-          {/* Breadcrumb */}
-          <p className="text-xs text-gray-400 mb-3">Raw Materials / Stock</p>
-
-          {/* Card */}
           <div className="rounded-xl bg-white shadow-sm">
-
-            {/* Table Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">Raw Material Stock</h2>
+              <h2 className="text-base font-semibold text-gray-900">Product Stock Levels</h2>
               <div className="flex items-center gap-3">
-
-                {/* Record Movement button — links to movements page */}
+                
                 <a
-                  href="/stock/raw-materials-logs"
+                  href="/stock/product-logs"
                   className="flex items-center gap-1.5 rounded-lg bg-green-500 text-white px-3 py-1.5 text-xs font-medium hover:bg-green-600"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Record Movement
+                  Record Production
                 </a>
 
-                {/* Search */}
                 <div className="relative">
                   <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -130,12 +137,11 @@ const RawMaterialStockPage = () => {
                   <input
                     value={search}
                     onChange={e => { setSearch(e.target.value); setPage(1) }}
-                    placeholder="Search material or location..."
+                    placeholder="Search product or batch..."
                     className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 w-52"
                   />
                 </div>
 
-                {/* Filter */}
                 <div className="relative" ref={filterRef}>
                   <button
                     onClick={() => setFilterOpen(o => !o)}
@@ -159,32 +165,45 @@ const RawMaterialStockPage = () => {
                   {filterOpen && (
                     <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl bg-white border border-gray-200 shadow-lg p-4 space-y-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-gray-700">Filters</p>
-                        {activeFilterCount > 0 && (
-                          <button
-                            onClick={() => { setFilters({ material__type: '', location: '' }); setPage(1) }}
-                            className="text-[10px] text-orange-500 hover:underline"
-                          >
-                            Clear all
-                          </button>
-                        )}
-                      </div>
+                         <p className="text-xs font-semibold text-gray-700">Filters</p>
+                         {activeFilterCount > 0 && (
+                           <button
+                             onClick={() => { setFilters({ location: '', product: '', batch: '' }); setPage(1) }}
+                             className="text-[10px] text-orange-500 hover:underline"
+                           >
+                             Clear all
+                           </button>
+                         )}
+                       </div>
 
-                      {/* Type */}
                       <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Type</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Product</label>
                         <select
-                          value={filters.material__type}
-                          onChange={e => { setFilters(f => ({ ...f, material__type: e.target.value })); setPage(1) }}
+                          value={filters.product}
+                          onChange={e => { setFilters(f => ({ ...f, product: e.target.value, batch: '' })); setPage(1) }}
                           className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
                         >
-                          <option value="">All</option>
-                          <option value="Raw Material">Raw Material</option>
-                          <option value="Consumable">Consumable</option>
+                          <option value="">All Products</option>
+                          {products.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
                         </select>
                       </div>
 
-                      {/* Location */}
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Batch</label>
+                        <select
+                          value={filters.batch}
+                          onChange={e => { setFilters(f => ({ ...f, batch: e.target.value })); setPage(1) }}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        >
+                          <option value="">All Batches</option>
+                          {filterBatches.map(b => (
+                            <option key={b.id} value={String(b.id)}>
+                              {b.batch_code} ({parseFloat(b.current_stock).toLocaleString()} qty)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
                       <div>
                         <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Location</label>
                         <select
@@ -192,7 +211,7 @@ const RawMaterialStockPage = () => {
                           onChange={e => { setFilters(f => ({ ...f, location: e.target.value })); setPage(1) }}
                           className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
                         >
-                          <option value="">All</option>
+                          <option value="">All Locations</option>
                           {locations.map(l => <option key={l.id} value={String(l.id)}>{l.full_path || l.name}</option>)}
                         </select>
                       </div>
@@ -202,7 +221,6 @@ const RawMaterialStockPage = () => {
               </div>
             </div>
 
-            {/* Table */}
             {loading ? (
               <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
             ) : (
@@ -210,36 +228,26 @@ const RawMaterialStockPage = () => {
                 <thead className="bg-primary text-white text-xs uppercase">
                   <tr>
                     <th className="px-6 py-3 w-10">No</th>
-                    <th className="px-6 py-3">Material</th>
-                    <th className="px-6 py-3">Type</th>
-                    <th className="px-6 py-3">Location</th>
+                    <th className="px-6 py-3">Product</th>
                     <th className="px-6 py-3">Batch No</th>
+                    <th className="px-6 py-3">Location</th>
                     <th className="px-6 py-3">Quantity</th>
                     <th className="px-6 py-3">Unit</th>
-                    <th className="px-6 py-3">Last Updated</th>
+                    <th className="px-6 py-3">Updated</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-6 py-10 text-center text-gray-400">No stock entries found</td>
+                      <td colSpan={8} className="px-6 py-10 text-center text-gray-400">No product stock entries found</td>
                     </tr>
                   ) : paginated.map((stock, idx) => (
                     <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
-                      <td className="px-6 py-3 font-medium text-gray-900">{stock.material_name}</td>
-                      <td className="px-6 py-3">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${
-                          stock.material_type === 'Raw Material'
-                            ? 'bg-blue-50 text-blue-600'
-                            : 'bg-purple-50 text-purple-600'
-                        }`}>
-                          {stock.material_type}
-                        </span>
-                      </td>
+                      <td className="px-6 py-3 font-medium text-gray-900">{stock.product_name}</td>
+                      <td className="px-6 py-3 font-mono text-xs text-orange-600 font-bold">{stock.batch_code || '—'}</td>
                       <td className="px-6 py-3 text-gray-500">{stock.location_name}</td>
-                      <td className="px-6 py-3 text-gray-500">{stock.batch_code || '—'}</td>
                       <td className="px-6 py-3">
                         <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${getStockBadge(stock.quantity)}`}>
                           {parseFloat(stock.quantity).toLocaleString()}
@@ -255,7 +263,7 @@ const RawMaterialStockPage = () => {
                       </td>
                       <td className="px-6 py-3">
                         <a
-                          href={`/stock/raw-materials-logs?material=${stock.material}&location=${stock.location}`}
+                          href={`/stock/product-logs?product=${stock.product}&batch=${stock.batch}`}
                           className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600"
                         >
                           View Log
@@ -267,7 +275,6 @@ const RawMaterialStockPage = () => {
               </table>
             )}
 
-            {/* Pagination */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
                 Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
@@ -301,4 +308,4 @@ const RawMaterialStockPage = () => {
   )
 }
 
-export default RawMaterialStockPage
+export default ProductStockPage

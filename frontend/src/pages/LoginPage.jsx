@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 const LoginPage = () => {
@@ -6,16 +6,29 @@ const LoginPage = () => {
     username: '',
     password: ''
   })
+  const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
+  // Check if already logged in on mount
+  useEffect(() => {
+    const token = localStorage.getItem('access') || sessionStorage.getItem('access')
+    if (token) {
+      navigate('/dashboard')
+    }
+  }, [navigate])
+
   const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
+    const { name, value, type, checked } = e.target
+    if (type === 'checkbox') {
+      setRememberMe(checked)
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }))
+    }
     // Clear error when user starts typing
     if (error) setError('')
   }
@@ -37,10 +50,13 @@ const LoginPage = () => {
       const data = await response.json()
 
       if (response.ok) {
-        localStorage.setItem('access', data.access)      // add this
-        localStorage.setItem('refresh', data.refresh)    // add this
-        localStorage.setItem('user', JSON.stringify(data.user))
-        localStorage.setItem('isAuthenticated', 'true')
+        const storage = rememberMe ? localStorage : sessionStorage
+        
+        storage.setItem('access', data.access)
+        storage.setItem('refresh', data.refresh)
+        storage.setItem('user', JSON.stringify(data.user))
+        storage.setItem('isAuthenticated', 'true')
+        
         navigate('/dashboard')
       } else {
         setError(data.error || 'Login failed')
@@ -116,7 +132,13 @@ const LoginPage = () => {
 
               <div className="flex items-center justify-between">
                 <label className="inline-flex items-center">
-                  <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                  <input 
+                    type="checkbox" 
+                    name="rememberMe"
+                    checked={rememberMe}
+                    onChange={handleInputChange}
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" 
+                  />
                   <span className="ml-2 text-sm text-gray-600">Remember me</span>
                 </label>
                 <a href="#" className="text-sm font-medium text-primary-600 hover:text-primary-700">

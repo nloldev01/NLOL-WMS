@@ -5,14 +5,14 @@ from .models import RawMaterialStock, RawMaterialStockLog
 
 @admin.register(RawMaterialStock)
 class RawMaterialStockAdmin(admin.ModelAdmin):
-    list_display    = ('raw_material', 'location', 'quantity', 'unit_display', 'updated_at')
-    list_filter     = ('location', 'material__type')
-    search_fields   = ('material__name', 'location__name')
-    readonly_fields = ('material', 'quantity', 'updated_at')
+    list_display    = ('raw_material', 'location', 'batch', 'quantity', 'unit_display', 'updated_at')
+    list_filter     = ('location', 'material__type', 'batch')
+    search_fields   = ('material__name', 'location__name', 'batch__batch_code')
+    readonly_fields = ('material', 'batch', 'quantity', 'updated_at')
 
     fieldsets = (
         (None, {
-            'fields': ('material', 'location', 'quantity', 'updated_at'),
+            'fields': ('material', 'location', 'batch', 'quantity', 'updated_at'),
         }),
     )
 
@@ -42,7 +42,7 @@ class RawMaterialStockAdmin(admin.ModelAdmin):
 class RawMaterialStockLogAdmin(admin.ModelAdmin):
     list_display = (
         'created_at', 'raw_material', 'movement_badge', 'signed_quantity',
-        'balance_after', 'location', 'counterpart_location',
+        'balance_after', 'location', 'batch', 'counterpart_location',
         'reference', 'performed_by',
     )
     list_filter   = ('movement_type', 'location', 'material__type', 'created_at')
@@ -56,7 +56,7 @@ class RawMaterialStockLogAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Movement Info', {
-            'fields': ('material', 'movement_type', 'quantity', 'balance_after'),
+            'fields': ('material', 'batch', 'movement_type', 'quantity', 'balance_after'),
         }),
         ('Locations', {
             'fields': ('location', 'counterpart_location'),

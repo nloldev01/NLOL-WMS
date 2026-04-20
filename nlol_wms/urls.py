@@ -22,5 +22,7 @@ urlpatterns = [
     path('api/', include('accounts.urls')),
     path('api/', include('users.urls')),
     path('api/raw-materials-stock/', include('raw_materials_stock.urls')),
+    path('api/products-stock/', include('products_stock.urls')),
+    path('api/inventory-core/', include('inventory_core.urls')),
     path('api/master-data/', include('master_data.urls')),
 ]

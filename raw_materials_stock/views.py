@@ -1,3 +1,5 @@
+from django.db import transaction
+from django.core.exceptions import ValidationError
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,6 +9,8 @@ from django.core.exceptions import ValidationError
 from django.db.models import Sum
 
 from master_data.models import Location
+from inventory_core.models import Batch
+from inventory_core.services.batch_service import BatchService
 from .models import RawMaterialStock, RawMaterialStockLog
 
 from .serializers import (
@@ -109,7 +113,7 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class   = RawMaterialStockLogSerializer
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields   = ['material', 'location', 'movement_type']
+    filterset_fields   = ['material', 'location', 'movement_type', 'batch', 'supplier']
     search_fields      = ['material__name', 'reference', 'notes']
     ordering_fields    = ['created_at', 'material__name', 'quantity']
     ordering           = ['-created_at']
@@ -122,27 +126,33 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
         ).all()
 
     @action(detail=False, methods=['post'], url_path='record')
+    @transaction.atomic
     def record(self, request):
         """
         POST /stock-movements/record/
         Record any stock movement: purchase, usage, wastage, transfer, adjustment, return.
-
-        Request body:
-        {
-            "material": 1,
-            "location": 2,
-            "movement_type": "purchase",   // or usage / wastage / transfer_out / adjustment / return
-            "quantity": 500,
-            "counterpart_location": 3,     // required only for transfer_out
-            "reference": "PO-2024-0081",   // optional
-            "notes": "Supplier: ABC Mills" // optional
-        }
-
-        For transfers: supply movement_type="transfer_out" + counterpart_location.
-        The paired transfer_in is created automatically.
         """
         serializer = StockMovementSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        batch = serializer.validated_data.get('batch')
+        supplier = serializer.validated_data.get('supplier')
+        material = serializer.validated_data['material']
+        auto_generate = serializer.validated_data.get('auto_generate_batch', False)
+
+        # Logic: If batch is selected, take its supplier
+        if batch and batch.supplier:
+            supplier = batch.supplier
+
+        if auto_generate and not batch:
+            # Generate and create the batch
+            batch_code = BatchService.generate_code(batch_type='RAW')
+            batch = Batch.objects.create(
+                batch_code=batch_code,
+                batch_type='RAW',
+                raw_material=material,
+                supplier=supplier # Link provided supplier to new batch
+            )
 
         try:
             log = RawMaterialStockLog.create_movement(
@@ -150,12 +160,15 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
                 location=serializer.validated_data['location'],
                 movement_type=serializer.validated_data['movement_type'],
                 quantity=serializer.validated_data['quantity'],
+                batch=batch,
+                supplier=supplier,
                 counterpart_location=serializer.validated_data.get('counterpart_location'),
                 reference=serializer.validated_data.get('reference', ''),
                 notes=serializer.validated_data.get('notes', ''),
                 performed_by=request.user,
             )
         except ValidationError as e:
+            # Rollback happens automatically
             return Response(
                 {'detail': e.message},
                 status=status.HTTP_400_BAD_REQUEST,

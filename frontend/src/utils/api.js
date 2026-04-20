@@ -6,7 +6,7 @@ const BASE_URL = 'http://localhost:8000/api';
  * @param {object} options - Fetch options (method, body, headers, etc.)
  */
 export const apiFetch = async (endpoint, options = {}) => {
-  const token = localStorage.getItem('access');
+  const token = localStorage.getItem('access') || sessionStorage.getItem('access');
   
   const headers = {
     'Content-Type': 'application/json',
@@ -25,9 +25,18 @@ export const apiFetch = async (endpoint, options = {}) => {
     if (response.status === 401) {
       // Unauthorized - token might be expired or invalid
       console.warn('Unauthorized request. Redirecting to login...');
+      
+      // Clear both storages
       localStorage.removeItem('access');
       localStorage.removeItem('refresh');
       localStorage.removeItem('user');
+      localStorage.removeItem('isAuthenticated');
+      
+      sessionStorage.removeItem('access');
+      sessionStorage.removeItem('refresh');
+      sessionStorage.removeItem('user');
+      sessionStorage.removeItem('isAuthenticated');
+
       window.location.href = '/login';
       return null;
     }

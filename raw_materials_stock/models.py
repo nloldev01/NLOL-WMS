@@ -7,32 +7,32 @@ User = get_user_model()
 
 
 class RawMaterialStock(models.Model):
-    """
-    Current stock level per material per location.
-    This is a fast-read snapshot — always updated alongside a log entry.
-    Never edit this directly; go through RawMaterialStockLog.create_movement().
-    """
-
     material = models.ForeignKey(
         'master_data.RawMaterialAndConsumable',
-        on_delete=models.PROTECT,
-        related_name='stock_entries',
+        on_delete=models.PROTECT
     )
     location = models.ForeignKey(
         'master_data.Location',
-        on_delete=models.PROTECT,
-        related_name='stock_entries',
+        on_delete=models.PROTECT
     )
+    batch = models.ForeignKey(
+        'inventory_core.Batch',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='stock_levels'
+    )
+
     quantity = models.DecimalField(max_digits=14, decimal_places=4, default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'raw_material_stock'
-        unique_together = ('material', 'location')
+        unique_together = ('material', 'location', 'batch')
         ordering = ['material__name', 'location__name']
 
     def __str__(self):
-        return f"{self.material.name} @ {self.location.name}: {self.quantity} {self.material.unit}"
+        return f"{self.material.name} @ {self.location.name}: {self.quantity}"
 
 
 class RawMaterialStockLog(models.Model):
@@ -69,6 +69,7 @@ class RawMaterialStockLog(models.Model):
         related_name='stock_logs',
         help_text="Primary location affected by this movement.",
     )
+    
     # Populated only for transfers — the counterpart location
     counterpart_location = models.ForeignKey(
         'master_data.Location',
@@ -100,6 +101,21 @@ class RawMaterialStockLog(models.Model):
         related_name='stock_log_entries',
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    batch = models.ForeignKey(
+        'inventory_core.Batch',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='stock_logs'
+    )
+    supplier = models.ForeignKey(
+        'master_data.Supplier',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='raw_material_stock_logs'
+    )
 
     class Meta:
         db_table = 'raw_material_stock_log'
@@ -146,6 +162,8 @@ class RawMaterialStockLog(models.Model):
         location,
         movement_type,
         quantity,
+        batch=None,
+        supplier=None,
         performed_by=None,
         reference='',
         notes='',
@@ -171,6 +189,7 @@ class RawMaterialStockLog(models.Model):
         stock, _ = RawMaterialStock.objects.select_for_update().get_or_create(
             material=material,
             location=location,
+            batch=batch,
             defaults={'quantity': 0},
         )
 
@@ -197,6 +216,8 @@ class RawMaterialStockLog(models.Model):
             notes=notes,
             performed_by=performed_by,
             counterpart_location=counterpart_location,
+            batch=batch,
+            supplier=supplier,
         )
 
         # Handle the paired leg of a transfer automatically
@@ -208,6 +229,7 @@ class RawMaterialStockLog(models.Model):
                 location=counterpart_location,
                 movement_type='transfer_in',
                 quantity=quantity,
+                batch=batch, 
                 performed_by=performed_by,
                 reference=reference,
                 notes=notes,

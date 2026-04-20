@@ -46,6 +46,8 @@ INSTALLED_APPS = [
     'users',
     'master_data',
     'raw_materials_stock',
+    'products_stock',
+    'inventory_core',
 ]
 
 MIDDLEWARE = [
@@ -151,8 +153,8 @@ REST_FRAMEWORK = {
 
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),  # Extended to 30 days
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
 }

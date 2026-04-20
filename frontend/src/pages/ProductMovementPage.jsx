@@ -6,19 +6,21 @@ import { apiFetch } from '../utils/api'
 const PAGE_SIZE = 10
 
 const MOVEMENT_TYPES = [
-  { value: 'purchase', label: 'Purchase / Receipt', color: 'bg-green-50 text-green-700' },
-  { value: 'return', label: 'Return', color: 'bg-blue-50 text-blue-700' },
+  { value: 'production', label: 'Production', color: 'bg-green-50 text-green-700' },
+  { value: 'sale', label: 'Sale / Issue', color: 'bg-blue-50 text-blue-700' },
+  { value: 'sale_return', label: 'Customer Return', color: 'bg-indigo-50 text-indigo-700' },
+  { value: 'purchase', label: 'Purchase / Receipt', color: 'bg-emerald-50 text-emerald-700' },
+  { value: 'purchase_return', label: 'Return to Supplier', color: 'bg-red-50 text-red-700' },
   { value: 'transfer_in', label: 'Transfer In', color: 'bg-violet-50 text-violet-700' },
-  { value: 'usage', label: 'Usage', color: 'bg-yellow-50 text-yellow-700' },
-  { value: 'wastage', label: 'Wastage', color: 'bg-red-50 text-red-700' },
   { value: 'transfer_out', label: 'Transfer Out', color: 'bg-pink-50 text-pink-700' },
   { value: 'adjustment', label: 'Adjustment', color: 'bg-slate-100 text-slate-600' },
+  { value: 'wastage', label: 'Wastage', color: 'bg-rose-50 text-rose-700' },
 ]
 
 const MOVEMENT_MAP = Object.fromEntries(MOVEMENT_TYPES.map(m => [m.value, m]))
 
 const emptyForm = {
-  material: '',
+  product: '',
   location: '',
   movement_type: '',
   quantity: '',
@@ -79,14 +81,8 @@ const CascadingLocationSelector = ({ locations, value, onChange, onQuickAdd }) =
   const path = getPath(value)
   const levels = []
 
-  // Root level (Warehouses)
-  levels.push({
-    label: 'Warehouse',
-    options: locations.filter(l => !l.parent),
-    selected: path[0]?.id || ''
-  })
+  levels.push({ label: 'Warehouse', options: locations.filter(l => !l.parent), selected: path[0]?.id || '' })
 
-  // Subsequent levels based on current path
   path.forEach((node, i) => {
     const children = locations.filter(l => String(l.parent) === String(node.id))
     if (children.length > 0) {
@@ -102,19 +98,15 @@ const CascadingLocationSelector = ({ locations, value, onChange, onQuickAdd }) =
     <div className="space-y-3">
       {levels.map((level, i) => (
         <div key={i} className="animate-in slide-in-from-top-1 duration-200">
-          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-            {level.label} {i === 0 && '*'}
-          </label>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{level.label} {i === 0 && '*'}</label>
           <div className="flex gap-2">
             <select
               value={level.selected}
               onChange={(e) => onChange(e.target.value)}
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none bg-white font-medium"
+              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 outline-none bg-white font-medium"
             >
               <option value="">Select {level.label.toLowerCase()}...</option>
-              {level.options.map(opt => (
-                <option key={opt.id} value={opt.id}>{opt.name}</option>
-              ))}
+              {level.options.map(opt => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
             </select>
             {i === levels.length - 1 && (
               <button
@@ -213,12 +205,12 @@ const QuickAddLocationModal = ({ isOpen, onClose, onAdd, locations }) => {
   )
 }
 
-const StockMovementPage = () => {
+const ProductMovementPage = () => {
   const [logs, setLogs]           = useState([])
-  const [materials, setMaterials] = useState([])
+  const [products, setProducts]   = useState([])
   const [locations, setLocations] = useState([])
   const [suppliers, setSuppliers] = useState([])
-  const [filterBatches, setFilterBatches] = useState([]) // For the filter dropdown
+  const [filterBatches, setFilterBatches] = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [page, setPage]           = useState(1)
@@ -230,25 +222,23 @@ const StockMovementPage = () => {
   const [availableStock, setAvailableStock] = useState([])
   const [fetchingStock, setFetchingStock] = useState(false)
 
-  // Initialize filters from URL params immediately
   const [filters, setFilters] = useState(() => {
     const params = new URLSearchParams(window.location.search)
     return {
       movement_type: '',
       location: params.get('location') || '',
-      material: params.get('material') || '',
+      product: params.get('product') || '',
       batch: params.get('batch') || '',
       supplier: params.get('supplier') || '',
     }
   })
 
   const [filterOpen, setFilterOpen] = useState(false)
-  const [batches, setBatches] = useState([]) // For the modal dropdown
+  const [batches, setBatches] = useState([]) // For the modal
   const filterRef = useRef(null)
 
-
   useEffect(() => {
-    fetchMaterials()
+    fetchProducts()
     fetchLocations()
     fetchSuppliers()
   }, [])
@@ -256,11 +246,20 @@ const StockMovementPage = () => {
   useEffect(() => {
     fetchLogs()
   }, [search, filters])
-  
-  // Fetch batches for filter whenever material filter changes
+
   useEffect(() => {
-    fetchFilterBatches(filters.material)
-  }, [filters.material])
+    fetchFilterBatches(filters.product)
+  }, [filters.product])
+
+  useEffect(() => {
+    if (form.product) {
+      fetchBatches(form.product)
+      fetchAvailableStock(form.product)
+    } else {
+      setBatches([])
+      setAvailableStock([])
+    }
+  }, [form.product])
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -277,99 +276,73 @@ const StockMovementPage = () => {
       const params = new URLSearchParams()
       if (search) params.append('search', search)
       if (filters.movement_type) params.append('movement_type', filters.movement_type)
-      if (filters.material) params.append('material', filters.material)
+      if (filters.product) params.append('product', filters.product)
       if (filters.location) params.append('location', filters.location)
-      if (filters.batch)    params.append('batch',    filters.batch)
+      if (filters.batch) params.append('batch', filters.batch)
       if (filters.supplier) params.append('supplier', filters.supplier)
 
-      const res = await apiFetch(`/raw-materials-stock/stock-movements/?${params.toString()}`)
+      const res = await apiFetch(`/products-stock/stock-movements/?${params.toString()}`)
       if (res && res.ok) {
         const data = await res.json()
         setLogs(Array.isArray(data) ? data : (data.results ?? []))
-      } else {
-        setLogs([])
-      }
-    } catch {
-      setLogs([])
-      setError('Failed to load movement log')
-    } finally {
-      setLoading(false)
-    }
+      } else setLogs([])
+    } catch { setError('Failed to load logs') }
+    finally { setLoading(false) }
   }
 
-  const fetchMaterials = async () => {
-    try {
-      const res = await apiFetch('/master-data/raw-materials-and-consumables/')
-      if (res && res.ok) {
-        const data = await res.json()
-        setMaterials(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load materials') }
+  const fetchProducts = async () => {
+    const res = await apiFetch('/master-data/products/')
+    if (res && res.ok) {
+      const data = await res.json()
+      setProducts(Array.isArray(data) ? data : (data.results ?? []))
+    }
   }
 
   const fetchLocations = async () => {
-    try {
-      const res = await apiFetch('/master-data/locations/')
-      if (res && res.ok) {
-        const data = await res.json()
-        setLocations(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load locations') }
+    const res = await apiFetch('/master-data/locations/')
+    if (res && res.ok) {
+      const data = await res.json()
+      setLocations(Array.isArray(data) ? data : (data.results ?? []))
+    }
   }
 
   const fetchSuppliers = async () => {
-    try {
-      const res = await apiFetch('/master-data/suppliers/')
-      if (res && res.ok) {
-        const data = await res.json()
-        setSuppliers(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load suppliers') }
-  }
-  
-  useEffect(() => {
-    if (form.material) {
-      fetchBatches(form.material)
-      fetchAvailableStock(form.material)
-    } else {
-      setBatches([])
-      setAvailableStock([])
+    const res = await apiFetch('/master-data/suppliers/')
+    if (res && res.ok) {
+      const data = await res.json()
+      setSuppliers(Array.isArray(data) ? data : (data.results ?? []))
     }
-  }, [form.material])
-
-  const fetchBatches = async (materialId) => {
-    try {
-      const res = await apiFetch(`/inventory-core/batches/?batch_type=RAW&raw_material=${materialId}`)
-      if (res && res.ok) {
-        const data = await res.json()
-        setBatches(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load batches') }
   }
 
-  const fetchFilterBatches = async (materialId) => {
-    try {
-      let query = '?batch_type=RAW'
-      if (materialId) query += `&raw_material=${materialId}`
-      
-      const res = await apiFetch(`/inventory-core/batches/${query}`)
-      if (res && res.ok) {
-        const data = await res.json()
-        setFilterBatches(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load filter batches') }
+  const fetchBatches = async (pid) => {
+    const res = await apiFetch(`/inventory-core/batches/?batch_type=PRD&product=${pid}`)
+    if (res && res.ok) {
+      const data = await res.json()
+      setBatches(Array.isArray(data) ? data : (data.results ?? []))
+    }
   }
 
-  const fetchAvailableStock = async (mid) => {
+  const fetchFilterBatches = async (pid) => {
+    let q = '?batch_type=PRD'
+    if (pid) q += `&product=${pid}`
+    const res = await apiFetch(`/inventory-core/batches/${q}`)
+    if (res && res.ok) {
+      const data = await res.json()
+      setFilterBatches(Array.isArray(data) ? data : (data.results ?? []))
+    }
+  }
+
+  const fetchAvailableStock = async (pid) => {
     setFetchingStock(true)
     try {
-      const res = await apiFetch(`/raw-materials-stock/stock/?material=${mid}&quantity=0.01`)
+      const res = await apiFetch(`/products-stock/stock/?product=${pid}&quantity=0.01`)
       if (res && res.ok) {
         const data = await res.json()
         const items = Array.isArray(data) ? data : (data.results ?? [])
+        // Sort by updated_at (FIFO ish)
         setAvailableStock(items.filter(i => parseFloat(i.quantity) > 0))
       }
-    } catch { console.error('Failed to fetch stock') }
+    } catch { console.error('Failed to fetch available stock') }
     finally { setFetchingStock(false) }
   }
 
@@ -388,13 +361,41 @@ const StockMovementPage = () => {
   }
 
   const filtered = logs
-
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const isTransfer = form.movement_type === 'transfer_out'
-  const isOutbound = ['usage', 'wastage', 'transfer_out', 'return'].includes(form.movement_type)
+  const isOutbound = ['sale', 'usage', 'wastage', 'transfer_out', 'production_usage'].includes(form.movement_type)
+
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setForm(prev => {
+      const next = { ...prev, [name]: value }
+      
+      // Dynamic logic: if batch is selected, take its supplier
+      if (name === 'batch' && value) {
+        const selBatch = batches.find(b => String(b.id) === String(value))
+        if (selBatch?.supplier) {
+          next.supplier = selBatch.supplier
+        }
+      }
+      
+      return next
+    })
+  }
+
+  const handlePick = (item) => {
+    setForm(prev => ({
+      ...prev,
+      location: item.location,
+      batch: item.batch,
+      // quantity: item.quantity // Maybe don't auto-fill quantity
+    }))
+  }
+
+  const selectedProduct = products.find(p => String(p.id) === String(form.product))
+  const unitLabel = selectedProduct?.unit_name || selectedProduct?.unit || ''
 
   const openAdd = () => {
     setForm(emptyForm)
@@ -408,70 +409,37 @@ const StockMovementPage = () => {
     setError('')
   }
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm(prev => {
-      const next = { ...prev, [name]: value }
-
-      // Dynamic logic: if batch is selected, take its supplier
-      if (name === 'batch' && value) {
-        const selBatch = batches.find(b => String(b.id) === String(value))
-        if (selBatch?.supplier) {
-          next.supplier = selBatch.supplier
-        }
-      }
-
-      return next
-    })
-  }
-
-  const handlePick = (item) => {
-    setForm(prev => ({
-      ...prev,
-      location: item.location,
-      batch: item.batch,
-    }))
-  }
-
-  const selectedMaterial = materials.find(m => String(m.id) === String(form.material))
-  const unitLabel = selectedMaterial?.unit_name || selectedMaterial?.unit || ''
-
   const handleSubmit = async () => {
     setSubmitting(true)
     setError('')
 
     const payload = {
-      material:      parseInt(form.material),
-      location:      parseInt(form.location),
+      product: parseInt(form.product),
+      location: parseInt(form.location),
       movement_type: form.movement_type,
-      quantity:      parseFloat(form.quantity),
-      batch:         form.batch ? parseInt(form.batch) : null,
-      supplier:      form.supplier ? parseInt(form.supplier) : null,
+      quantity: parseFloat(form.quantity),
+      batch: form.batch ? parseInt(form.batch) : null,
+      supplier: form.supplier ? parseInt(form.supplier) : null,
       auto_generate_batch: form.auto_generate_batch,
-      reference:     form.reference?.trim() || '',
-      notes:         form.notes?.trim() || '',
+      reference: form.reference,
+      notes: form.notes,
       counterpart_location: form.counterpart_location ? parseInt(form.counterpart_location) : null
     }
 
     try {
-      const res = await apiFetch('/raw-materials-stock/stock-movements/record/', {
+      const res = await apiFetch('/products-stock/stock-movements/record/', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload)
       })
-      if (!res) return
-      const data = await res.json()
-      if (res.ok) {
+      if (res && res.ok) {
         fetchLogs()
         closeModal()
       } else {
-        const firstError = Object.values(data).flat()[0]
-        setError(firstError || 'Something went wrong.')
+        const errData = await res.json()
+        setError(errData.error || errData.quantity?.[0] || 'Check your inputs')
       }
-    } catch {
-      setError('Network error. Please try again.')
-    } finally {
-      setSubmitting(false)
-    }
+    } catch { setError('Connection error') }
+    finally { setSubmitting(false) }
   }
 
   const selectedBatchObj = batches.find(b => String(b.id) === String(form.batch))
@@ -482,15 +450,12 @@ const StockMovementPage = () => {
       <div className="ml-16">
         <Topbar />
         <main className="p-6">
-
-          <p className="text-xs text-gray-400 mb-3">Raw Materials / Raw Materials Movements</p>
+          <p className="text-xs text-gray-400 mb-3">Products / Product Movements</p>
 
           <div className="rounded-xl bg-white shadow-sm overflow-hidden">
-
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">Raw Materials Movement Log</h2>
+              <h2 className="text-base font-semibold text-gray-900">Product Movement History</h2>
               <div className="flex items-center gap-3">
-
                 <button
                   onClick={openAdd}
                   className="flex items-center gap-1.5 rounded-lg bg-green-500 text-white px-3 py-1.5 text-xs font-medium hover:bg-green-600"
@@ -501,14 +466,14 @@ const StockMovementPage = () => {
                   Record Movement
                 </button>
 
-                <div className="relative">
+                <div className="relative group">
                   <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <input
                     value={search}
                     onChange={e => { setSearch(e.target.value); setPage(1) }}
-                    placeholder="Search material, ref..."
+                    placeholder="Search ledger..."
                     className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 w-48"
                   />
                 </div>
@@ -535,16 +500,16 @@ const StockMovementPage = () => {
                   {filterOpen && (
                     <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-xl bg-white border border-gray-200 shadow-lg p-4 space-y-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-gray-700">Filters</p>
-                        {activeFilterCount > 0 && (
-                          <button
-                            onClick={() => { setFilters({ movement_type: '', location: '', material: '', batch: '', supplier: '' }); setPage(1) }}
-                            className="text-[10px] text-orange-500 hover:underline"
-                          >
-                            Clear all
-                          </button>
-                        )}
-                      </div>
+                         <p className="text-xs font-semibold text-gray-700">Filters</p>
+                         {activeFilterCount > 0 && (
+                           <button
+                             onClick={() => { setFilters({ movement_type: '', location: '', product: '', batch: '', supplier: '' }); setPage(1) }}
+                             className="text-[10px] text-orange-500 hover:underline"
+                           >
+                             Clear all
+                           </button>
+                         )}
+                       </div>
 
                       <div>
                         <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Movement Type</label>
@@ -559,14 +524,14 @@ const StockMovementPage = () => {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Material</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Product</label>
                         <select
-                          value={filters.material}
-                          onChange={e => { setFilters(f => ({ ...f, material: e.target.value, batch: '' })); setPage(1) }}
+                          value={filters.product}
+                          onChange={e => { setFilters(f => ({ ...f, product: e.target.value, batch: '' })); setPage(1) }}
                           className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
                         >
                           <option value="">All</option>
-                          {materials.map(m => <option key={m.id} value={String(m.id)}>{m.name}</option>)}
+                          {products.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
                         </select>
                       </div>
 
@@ -578,7 +543,11 @@ const StockMovementPage = () => {
                           className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
                         >
                           <option value="">All</option>
-                          {filterBatches.map(b => <option key={b.id} value={String(b.id)}>{b.batch_code}</option>)}
+                          {filterBatches.map(b => (
+                            <option key={b.id} value={String(b.id)}>
+                              {b.batch_code} ({parseFloat(b.current_stock).toLocaleString()} qty)
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -611,20 +580,17 @@ const StockMovementPage = () => {
               </div>
             </div>
 
-            {loading ? (
-              <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
-            ) : (
+            {loading ? <div className="p-10 text-center text-gray-400 text-sm">Loading...</div> : (
               <table className="w-full text-sm text-left">
                 <thead className="bg-primary text-white text-xs uppercase">
                   <tr>
                     <th className="px-6 py-3 w-10">No</th>
-                    <th className="px-6 py-3">Material</th>
+                    <th className="px-6 py-3">Product</th>
                     <th className="px-6 py-3">Batch</th>
                     <th className="px-6 py-3">Movement</th>
                     <th className="px-6 py-3">Quantity</th>
                     <th className="px-6 py-3">Location</th>
                     <th className="px-6 py-3">Supplier</th>
-                    <th className="px-6 py-3">Transfer To/From</th>
                     <th className="px-6 py-3">Balance After</th>
                     <th className="px-6 py-3">Reference</th>
                     <th className="px-6 py-3 text-right">Date</th>
@@ -633,16 +599,15 @@ const StockMovementPage = () => {
                 <tbody className="divide-y divide-gray-50">
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-6 py-10 text-center text-gray-400">No movement records found</td>
+                      <td colSpan={10} className="px-6 py-10 text-center text-gray-400">No movement records found</td>
                     </tr>
                   ) : paginated.map((log, idx) => {
                     const mType = MOVEMENT_MAP[log.movement_type]
-                    const isOutbound = ['usage', 'wastage', 'transfer_out'].includes(log.movement_type)
                     const supplierName = suppliers.find(s => s.id === log.supplier)?.name || '—'
                     return (
                       <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-3 text-gray-400 text-xs">{(page - 1) * PAGE_SIZE + idx + 1}</td>
-                        <td className="px-6 py-3 font-medium text-gray-900 text-xs">{log.material_name}</td>
+                        <td className="px-6 py-3 font-medium text-gray-900">{log.product_name}</td>
                         <td className="px-6 py-3">
                           <span className="px-2 py-0.5 rounded font-mono text-[10px] text-orange-600 bg-orange-50 font-bold border border-orange-100">
                              {log.batch_code || '—'}
@@ -653,27 +618,16 @@ const StockMovementPage = () => {
                             {mType?.label ?? log.movement_type}
                           </span>
                         </td>
-                        <td className="px-6 py-3">
-                          <span className={`font-semibold text-xs ${isOutbound ? 'text-red-500' : 'text-green-600'}`}>
-                            {isOutbound ? '−' : '+'}{parseFloat(log.quantity).toLocaleString()}
-                            <span className="ml-1 text-[10px] font-normal text-gray-400">{log.unit}</span>
-                          </span>
+                        <td className="px-6 py-3 font-bold text-slate-800">
+                          {parseFloat(log.quantity).toLocaleString()} <span className="text-[10px] font-normal text-gray-400 uppercase">{log.unit}</span>
                         </td>
-                        <td className="px-6 py-3 text-gray-500 text-[10px]">{log.location_name}</td>
-                        <td className="px-6 py-3 text-gray-500 text-[10px]">{supplierName}</td>
-                        <td className="px-6 py-3 text-gray-400 text-[10px]">
-                          {log.counterpart_location_name || '—'}
+                        <td className="px-6 py-3 text-gray-500 text-xs">{log.location_name}</td>
+                        <td className="px-6 py-3 text-gray-500 text-xs">{supplierName}</td>
+                        <td className="px-6 py-3 font-medium text-slate-900">
+                          {parseFloat(log.balance_after).toLocaleString()} <span className="text-[10px] font-normal text-gray-400 uppercase">{log.unit}</span>
                         </td>
-                        <td className="px-6 py-3 text-gray-700 font-medium text-xs">
-                          {parseFloat(log.balance_after).toLocaleString()}
-                          <span className="ml-1 text-[10px] font-normal text-gray-400">{log.unit}</span>
-                        </td>
-                        <td className="px-6 py-3 text-gray-400 text-[10px] max-w-[120px] truncate">
-                          {log.reference || '—'}
-                        </td>
-                        <td className="px-6 py-3 text-right text-gray-400 text-[10px]">
-                          {log.created_at ? new Date(log.created_at).toLocaleDateString() : '—'}
-                        </td>
+                        <td className="px-6 py-3 text-gray-400 text-xs truncate max-w-[100px]">{log.reference || '—'}</td>
+                        <td className="px-6 py-3 text-right text-gray-400 text-xs">{new Date(log.created_at).toLocaleDateString()}</td>
                       </tr>
                     )
                   })}
@@ -686,15 +640,25 @@ const StockMovementPage = () => {
                 Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
               </p>
               <div className="flex items-center gap-1">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                  className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30">‹</button>
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+                >‹</button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                  <button key={p} onClick={() => setPage(p)}
-                    className={`w-7 h-7 rounded text-xs font-medium ${page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`w-7 h-7 rounded text-xs font-medium ${
+                      page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
+                    }`}
                   >{p}</button>
                 ))}
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30">›</button>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+                >›</button>
               </div>
             </div>
           </div>
@@ -704,40 +668,44 @@ const StockMovementPage = () => {
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl max-h-[90vh] overflow-y-auto animate-in zoom-in duration-200">
-
+            
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Record Stock Movement</h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              <h3 className="text-base font-semibold text-gray-900">Record Product Movement</h3>
+              <button 
+                onClick={closeModal} 
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              >×</button>
             </div>
 
             <div className="px-6 py-5 space-y-6">
               {error && (
-                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</div>
+                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
+                  {error}
+                </div>
               )}
-
+              
               <div className="grid grid-cols-2 gap-6 pb-6 border-b border-slate-50">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Material *</label>
-                  <select
-                    name="material"
-                    value={form.material}
-                    onChange={handleChange}
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Product *</label>
+                  <select 
+                    name="product" 
+                    value={form.product} 
+                    onChange={handleChange} 
                     className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
                   >
-                    <option value="">Select material</option>
-                    {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    <option value="">Select Product</option>
+                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Movement Type *</label>
-                  <select
-                    name="movement_type"
-                    value={form.movement_type}
-                    onChange={handleChange}
+                  <select 
+                    name="movement_type" 
+                    value={form.movement_type} 
+                    onChange={handleChange} 
                     className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
                   >
-                    <option value="">Select type</option>
+                    <option value="">Select Type</option>
                     {MOVEMENT_TYPES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
@@ -761,11 +729,11 @@ const StockMovementPage = () => {
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Batch</label>
                   <div className="flex flex-col gap-2">
-                    <select
-                      name="batch"
-                      value={form.batch || ''}
-                      onChange={handleChange}
-                      disabled={form.auto_generate_batch}
+                    <select 
+                      name="batch" 
+                      value={form.batch} 
+                      onChange={handleChange} 
+                      disabled={form.auto_generate_batch} 
                       className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none disabled:bg-gray-50 disabled:text-gray-400 font-mono"
                     >
                       <option value="">No Batch / NA</option>
@@ -775,13 +743,12 @@ const StockMovementPage = () => {
                         </option>
                       ))}
                     </select>
-                    
-                    {['purchase', 'return', 'adjustment'].includes(form.movement_type) && (
+                    {form.movement_type === 'production' && (
                       <label className="flex items-center gap-2 cursor-pointer group">
-                        <input
-                          type="checkbox"
-                          checked={form.auto_generate_batch}
-                          onChange={e => setForm(f => ({ ...f, auto_generate_batch: e.target.checked, batch: e.target.checked ? '' : f.batch }))}
+                        <input 
+                          type="checkbox" 
+                          checked={form.auto_generate_batch} 
+                          onChange={e => setForm(f => ({ ...f, auto_generate_batch: e.target.checked, batch: '' }))} 
                           className="w-3.5 h-3.5 rounded border-gray-300 text-orange-500 focus:ring-orange-200"
                         />
                         <span className="text-[10px] font-semibold text-slate-500 group-hover:text-orange-600 transition-colors">
@@ -790,7 +757,6 @@ const StockMovementPage = () => {
                       </label>
                     )}
                   </div>
-                  {!form.material && !form.auto_generate_batch && <p className="text-[10px] text-slate-400 mt-1">Select material first to see batches</p>}
                 </div>
 
                 <div>
@@ -809,27 +775,25 @@ const StockMovementPage = () => {
               </div>
 
               <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                <CascadingLocationSelector
-                  locations={locations}
-                  value={form.location}
-                  onChange={(val) => setForm(f => ({ ...f, location: val }))}
-                  onQuickAdd={() => setLocModalOpen(true)}
-                />
+                 <CascadingLocationSelector 
+                   locations={locations} 
+                   value={form.location} 
+                   onChange={v => setForm(f => ({ ...f, location: v }))} 
+                   onQuickAdd={() => setLocModalOpen(true)}
+                 />
               </div>
 
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Quantity *</label>
                   <div className="relative">
-                    <input
-                      name="quantity"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.quantity}
-                      onChange={handleChange}
+                    <input 
+                      name="quantity" 
+                      type="number" 
                       placeholder="0.00"
-                      className="w-full rounded-lg border border-gray-200 pl-3 pr-12 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
+                      value={form.quantity} 
+                      onChange={handleChange} 
+                      className="w-full rounded-lg border border-gray-200 pl-3 pr-12 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none" 
                     />
                     {unitLabel && (
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-gray-200 uppercase tracking-tighter">
@@ -838,28 +802,27 @@ const StockMovementPage = () => {
                     )}
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Reference</label>
-                  <input
-                    name="reference"
-                    value={form.reference}
-                    onChange={handleChange}
-                    placeholder="PO number, order ID..."
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
+                  <input 
+                    name="reference" 
+                    placeholder="Invoice, Order..."
+                    value={form.reference} 
+                    onChange={handleChange} 
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none" 
                   />
                 </div>
               </div>
 
               {isTransfer && (
                 <div className="bg-pink-50/30 p-4 rounded-xl border border-pink-100">
-                  <p className="text-[10px] font-black text-pink-500 uppercase tracking-[0.2em] mb-3 leading-none">To Location (Destination)</p>
-                  <CascadingLocationSelector
-                    locations={locations}
-                    value={form.counterpart_location}
-                    onChange={(val) => setForm(f => ({ ...f, counterpart_location: val }))}
-                    onQuickAdd={() => setLocModalOpen(true)}
-                  />
+                   <p className="text-[10px] font-black text-pink-500 uppercase tracking-[0.2em] mb-3 leading-none">To Location (Destination)</p>
+                   <CascadingLocationSelector 
+                     locations={locations} 
+                     value={form.counterpart_location} 
+                     onChange={v => setForm(f => ({ ...f, counterpart_location: v }))} 
+                     onQuickAdd={() => setLocModalOpen(true)}
+                   />
                 </div>
               )}
 
@@ -869,7 +832,7 @@ const StockMovementPage = () => {
                   name="notes"
                   value={form.notes}
                   onChange={handleChange}
-                  placeholder="Any additional details..."
+                  placeholder="Additional details..."
                   rows={2}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none resize-none"
                 />
@@ -877,15 +840,13 @@ const StockMovementPage = () => {
             </div>
 
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-slate-50/30">
-              <button
-                onClick={closeModal}
+              <button 
+                onClick={closeModal} 
                 className="rounded-lg border border-gray-200 px-6 py-2 text-sm font-bold text-slate-500 hover:bg-white transition-all underline-offset-4"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
+              >Cancel</button>
+              <button 
+                onClick={handleSubmit} 
+                disabled={submitting} 
                 className="rounded-lg bg-orange-500 px-8 py-2 text-sm font-bold text-white shadow-lg shadow-orange-200 hover:bg-orange-600 disabled:opacity-50 active:scale-95 transition-all outline-none"
               >
                 {submitting ? 'Saving...' : 'Record Movement'}
@@ -905,4 +866,4 @@ const StockMovementPage = () => {
   )
 }
 
-export default StockMovementPage
+export default ProductMovementPage

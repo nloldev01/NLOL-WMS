@@ -61,8 +61,11 @@ const Sidebar = () => {
       id: 'stocks',
       label: 'Stocks',
       children: [
-        { id: 'product-stock', label: 'Product Stock', path: '/stock/product' },
+        { id: 'product-stock', label: 'Product Stock', path: '/stock/products' },
         { id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stock/raw-materials' },
+        { id: 'product-stock-logs', label: 'Product Stock Logs', path: '/stock/product-logs' },
+        { id: 'raw-material-stock-logs', label: 'Raw Material Stock Logs', path: '/stock/raw-materials-logs' },
+        { id: 'batches', label: 'Batches', path: '/stock/batches' },
       ],
     },  
     {

@@ -37,7 +37,7 @@ const UserPage = () => {
   }, [])
 
   useEffect(() => { 
-    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}')
     setCurrentUser(user)
     fetchUsers()
     fetchRoles() 

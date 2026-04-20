@@ -7,29 +7,37 @@ const Topbar = () => {
   const [profileOpen, setProfileOpen] = useState(false)
   const navigate = useNavigate()
 
-  // Get user info from localStorage (saved during login)
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  // Get user info from either storage
+  const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}')
   const name = user.fullname || 'User'
   const role = user.role || 'User'
 
   const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 
   const handleLogout = async () => {
-    const refresh = localStorage.getItem('refresh')
+    const refresh = localStorage.getItem('refresh') || sessionStorage.getItem('refresh')
 
     try {
-      await apiFetch('/logout/', {
-        method: 'POST',
-        body: JSON.stringify({ refresh }),
-      })
+      if (refresh) {
+        await apiFetch('/logout/', {
+          method: 'POST',
+          body: JSON.stringify({ refresh }),
+        })
+      }
     } catch (err) {
       console.error('Logout error:', err)
     }
 
-    // Clear tokens and user data regardless of API response
+    // Clear tokens and user data from BOTH storages
     localStorage.removeItem('access')
     localStorage.removeItem('refresh')
     localStorage.removeItem('user')
+    localStorage.removeItem('isAuthenticated')
+
+    sessionStorage.removeItem('access')
+    sessionStorage.removeItem('refresh')
+    sessionStorage.removeItem('user')
+    sessionStorage.removeItem('isAuthenticated')
 
     navigate('/login')
   }

@@ -212,57 +212,6 @@ class ProductSegment(models.Model):
     def __str__(self):
         return self.name
 
-class ProductBatch(models.Model):
-    product = models.ForeignKey(
-        'Product',
-        on_delete=models.PROTECT,
-        related_name='batches'
-    )
-
-    batch_number = models.CharField(max_length=100)
-
-    supplier = models.ForeignKey(
-        'Supplier',
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True
-    )
-
-    source_type = models.CharField(
-        max_length=50,
-        choices=[
-            ('purchase', 'Purchase'),
-            ('production', 'Production'),
-            ('return', 'Return'),
-            ('transfer', 'Transfer'),
-        ],
-        default='purchase'
-    )
-
-    source_reference = models.CharField(
-        max_length=255,
-        blank=True
-    )
-
-    purchase_date = models.DateField(null=True, blank=True)
-    manufacture_date = models.DateField(null=True, blank=True)
-    expiry_date = models.DateField(null=True, blank=True)
-
-    cost_price = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        null=True,
-        blank=True
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('product', 'batch_number')
-
-    def __str__(self):
-        return f"{self.product.name} - {self.batch_number}"
-
 class Product(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
