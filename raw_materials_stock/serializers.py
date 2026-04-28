@@ -19,6 +19,7 @@ class RawMaterialStockSerializer(serializers.ModelSerializer):
     location_name = serializers.CharField(source='location.get_full_path', read_only=True)
     batch         = serializers.PrimaryKeyRelatedField(queryset=Batch.objects.all(), required=False, allow_null=True)
     batch_code    = serializers.CharField(source='batch.batch_code', read_only=True)
+    lpn_code      = serializers.CharField(source='lpn.lpn_code', read_only=True)
     
     # FIX: Add explicit location field to handle ID-to-object conversion
     location = serializers.PrimaryKeyRelatedField(
@@ -31,7 +32,7 @@ class RawMaterialStockSerializer(serializers.ModelSerializer):
             'id',
             'material', 'material_name', 'material_type',
             'location', 'location_name',
-            'batch', 'batch_code',
+            'batch', 'batch_code', 'lpn', 'lpn_code',
             'quantity', 'unit',
             'updated_at',
         ]
@@ -64,6 +65,7 @@ class RawMaterialStockLogSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     batch_code = serializers.ReadOnlyField(source='batch.batch_code')
+    lpn_code = serializers.ReadOnlyField(source='lpn.lpn_code')
 
     class Meta:
         model = RawMaterialStockLog
@@ -74,7 +76,7 @@ class RawMaterialStockLogSerializer(serializers.ModelSerializer):
             'counterpart_location', 'counterpart_location_name',
             'movement_type', 'movement_type_display',
             'quantity', 'balance_after',
-            'batch', 'batch_code',
+            'batch', 'batch_code', 'lpn', 'lpn_code',
             'supplier',
             'reference', 'notes',
             'performed_by', 'performed_by_name',
@@ -117,10 +119,12 @@ class StockMovementSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+    lpn = serializers.PrimaryKeyRelatedField(queryset=Batch.objects.all().model._meta.get_field('lpns').related_model.objects.all(), required=False, allow_null=True)
     supplier      = serializers.PrimaryKeyRelatedField(queryset=Batch.objects.all().model._meta.get_field('supplier').related_model.objects.all(), required=False, allow_null=True)
     reference     = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
     notes         = serializers.CharField(required=False, allow_blank=True, default='')
     auto_generate_batch = serializers.BooleanField(required=False, default=False)
+    auto_generate_lpn = serializers.BooleanField(required=False, default=False)
 
     def validate(self, data):
         batch = data.get('batch')

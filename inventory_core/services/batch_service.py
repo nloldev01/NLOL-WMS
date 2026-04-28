@@ -1,5 +1,5 @@
-from datetime import date
 from django.db import transaction
+from django.utils import timezone
 from ..models import Batch, BatchCounter
 
 
@@ -10,12 +10,15 @@ class BatchService:
     def generate_code(batch_type: str):
         """
         Generates batch code string like:
-        BAT-260419-RAW-A01
-        BAT-260419-PRD-B12
+        B-260423-R-A00 (Raw Materials)
+        B-260423-P-A00 (Products)
         """
 
-        today = date.today()
+        today = timezone.localdate()
         date_str = today.strftime("%y%m%d")
+
+        # Mapping RAW -> R, PRD -> P
+        type_char = batch_type[0].upper()
 
         counter, _ = BatchCounter.objects.select_for_update().get_or_create(
             date=today,
@@ -23,6 +26,10 @@ class BatchService:
             defaults={"letter": "A", "number": 0}
         )
 
+        # Generate code with current values (starts at 00)
+        batch_code = f"B-{date_str}-{type_char}-{counter.letter}{counter.number:02d}"
+
+        # Increment for the next one
         counter.number += 1
 
         if counter.number > 99:
@@ -31,6 +38,19 @@ class BatchService:
 
         counter.save()
 
-        batch_code = f"BAT-{date_str}-{batch_type}-{counter.letter}{counter.number:02d}"
-
         return batch_code
+
+    @staticmethod
+    @transaction.atomic
+    def generate_lpn_code(batch=None):
+        """
+        Generates global LPN code. e.g. L-000000001
+        """
+        from ..models import LPNCounter
+        counter, _ = LPNCounter.objects.select_for_update().get_or_create(
+            prefix='L', 
+            defaults={'last_value': 0}
+        )
+        counter.last_value += 1
+        counter.save()
+        return f"{counter.prefix}-{counter.last_value:09d}"

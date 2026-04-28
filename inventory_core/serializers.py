@@ -13,6 +13,8 @@ class BatchSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    lpns = serializers.SerializerMethodField()
+
     current_stock = serializers.SerializerMethodField()
 
     class Meta:
@@ -29,6 +31,7 @@ class BatchSerializer(serializers.ModelSerializer):
             'expiry_date',
             'created_at',
             'current_stock',
+            'lpns',
         ]
         read_only_fields = ['batch_code', 'created_at']
 
@@ -39,3 +42,6 @@ class BatchSerializer(serializers.ModelSerializer):
         elif obj.batch_type == 'PRD':
             return obj.product_stock_levels.aggregate(total=Sum('quantity'))['total'] or 0
         return 0
+
+    def get_lpns(self, obj):
+        return [{'id': lpn.id, 'lpn_code': lpn.lpn_code} for lpn in obj.lpns.all()]

@@ -64,3 +64,41 @@ class Batch(models.Model):
 
     def __str__(self):
         return self.batch_code
+
+
+class LPN(models.Model):
+    """
+    License Plate Number: A physical container/pallet/split roll holding a specific batch.
+    """
+    lpn_code = models.CharField(max_length=50, unique=True)
+    batch = models.ForeignKey(Batch, on_delete=models.PROTECT, related_name='lpns')
+    
+    # Track splits from a parent LPN
+    parent_lpn = models.ForeignKey(
+        'self', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='child_lpns'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'inventory_lpns'
+        verbose_name_plural = 'LPNs'
+
+    def __str__(self):
+        return f"{self.lpn_code} ({self.batch.batch_code})"
+
+
+class LPNCounter(models.Model):
+    """
+    Tracks a purely sequential, global LPN numerical suffix.
+    """
+    prefix = models.CharField(max_length=2, default='L')
+    last_value = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'inventory_lpn_counter'

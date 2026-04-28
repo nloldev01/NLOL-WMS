@@ -1,8 +1,86 @@
-import { apiFetch } from '../utils/api'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { QRCodeCanvas } from 'qrcode.react'
+import { apiFetch } from '../utils/api'
 
-const PAGE_SIZE = 10
+// ─── QR Modal Component ────────────────────────────────────────────────────────
+const BatchQRModal = ({ item, onClose }) => {
+  const qrRef = useRef();
+
+  const qrData = {
+    type: item.lpn_code ? 'lpn' : 'batch',
+    id: item.lpn_id || item.id,
+    code: item.lpn_code || item.batch_code
+  };
+
+  const handleDownload = () => {
+    const originalCanvas = qrRef.current?.querySelector('canvas');
+    if (!originalCanvas) return;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const textSpace = 80;
+    canvas.width = originalCanvas.width;
+    canvas.height = originalCanvas.height + textSpace;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(originalCanvas, 0, 0);
+
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+
+    ctx.font = 'bold 16px Inter, system-ui, sans-serif';
+    const displayName = item.product_name || item.raw_material_name || 'Item';
+    ctx.fillText(displayName, canvas.width / 2, originalCanvas.height + 30);
+
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText(item.lpn_code || item.batch_code, canvas.width / 2, originalCanvas.height + 55);
+
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = `${item.lpn_code ? 'LPN-' + item.lpn_code : 'Batch-' + item.batch_code}.png`;
+    link.click();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-xl">
+        <div className="px-6 py-4 border-b flex justify-between items-center">
+          <h3 className="font-semibold text-gray-800">Batch Label</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-black text-xl">×</button>
+        </div>
+        <div className="p-8 flex flex-col items-center text-center">
+          <div ref={qrRef} className="p-2 border border-gray-100 rounded-lg bg-white">
+            <QRCodeCanvas
+              value={JSON.stringify(qrData)}
+              size={200}
+              level="H"
+              includeMargin={false}
+            />
+          </div>
+          <div className="mt-4">
+            <p className="text-sm font-bold text-gray-800">
+              {item.product_name || item.raw_material_name}
+            </p>
+            <p className="text-lg font-mono font-bold text-orange-600">
+              {item.lpn_code || item.batch_code}
+            </p>
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t flex gap-2">
+          <button onClick={handleDownload} className="flex-1 bg-orange-600 text-white py-2 rounded-lg font-medium hover:bg-orange-700">
+            Download PNG
+          </button>
+          <button onClick={onClose} className="flex-1 border border-gray-300 py-2 rounded-lg font-medium hover:bg-gray-50">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const BATCH_TYPE_CHOICES = [
   { value: 'RAW', label: 'Raw Material' },
@@ -163,6 +241,7 @@ const BatchesTable = () => {
   const [typeFilter, setTypeFilter] = useState('')
   const [page, setPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
+  const [qrTarget, setQrTarget] = useState(null)
   const [toast, setToast] = useState(null)
   const navigate = useNavigate()
 
@@ -283,6 +362,7 @@ const BatchesTable = () => {
                 <th className="px-6 py-3">Batch Code</th>
                 <th className="px-6 py-3">Type</th>
                 <th className="px-6 py-3">Item</th>
+                <th className="px-6 py-3 min-w-[150px]">LPNs</th>
                 <th className="px-6 py-3">Expiry</th>
                 <th className="px-6 py-3">Created</th>
                 <th className="px-6 py-3 text-right">Actions</th>
@@ -303,6 +383,28 @@ const BatchesTable = () => {
                   <td className="px-6 py-3 text-gray-700">
                     {item.raw_material_name || item.product_name || '—'}
                   </td>
+                  <td className="px-6 py-3">
+                    {item.lpns && item.lpns.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {item.lpns.map(lpn => (
+                          <button
+                            key={lpn.id}
+                            onClick={() => setQrTarget({ 
+                              ...item, 
+                              lpn_id: lpn.id, 
+                              lpn_code: lpn.lpn_code 
+                            })}
+                            className="px-2 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-600 font-mono font-bold border border-indigo-100 hover:bg-indigo-500 hover:text-white transition-colors"
+                            title="Generate LPN Label"
+                          >
+                            {lpn.lpn_code}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-6 py-3 text-gray-500 text-xs">
                     {item.expiry_date || '—'}
                   </td>
@@ -322,6 +424,13 @@ const BatchesTable = () => {
                       title="View Movement Logs"
                     >
                       View Logs
+                    </button>
+                    <button
+                      onClick={() => setQrTarget(item)}
+                      className="ml-2 rounded-md bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-orange-500 transition-colors"
+                      title="Print Batch QR"
+                    >
+                      QR
                     </button>
                   </td>
                 </tr>
@@ -374,6 +483,7 @@ const BatchesTable = () => {
           </div>
         </div>
       )}
+      {qrTarget && <BatchQRModal item={qrTarget} onClose={() => setQrTarget(null)} />}
     </>
   )
 }

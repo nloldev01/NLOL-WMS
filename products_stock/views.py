@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.core.exceptions import ValidationError
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -54,9 +55,11 @@ class ProductStockLogViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         batch = serializer.validated_data.get('batch')
+        lpn = serializer.validated_data.get('lpn')
         supplier = serializer.validated_data.get('supplier')
         product = serializer.validated_data['product']
         auto_generate = serializer.validated_data.get('auto_generate_batch', False)
+        auto_generate_lpn = serializer.validated_data.get('auto_generate_lpn', False)
 
         # Logic: If batch is selected, take its supplier
         if batch and batch.supplier:
@@ -71,21 +74,33 @@ class ProductStockLogViewSet(viewsets.ModelViewSet):
                 product=product,
                 supplier=supplier # Link provided supplier to new batch
             )
+            
+        # For positive adjustments (auto-generated batch), treat as inbound
+        movement_type = serializer.validated_data['movement_type']
+
+        # For positive adjustments (auto-generated batch), treat as inbound
+        movement_type = serializer.validated_data['movement_type']
+        if movement_type == 'adjustment' and auto_generate:
+            movement_type = 'adjustment_in'
 
         try:
             log = ProductStockLog.create_movement(
                 product=product,
                 location=serializer.validated_data['location'],
-                movement_type=serializer.validated_data['movement_type'],
+                movement_type=movement_type,
                 quantity=serializer.validated_data['quantity'],
                 batch=batch,
+                lpn=lpn,
                 supplier=supplier,
                 counterpart_location=serializer.validated_data.get('counterpart_location'),
                 reference=serializer.validated_data.get('reference', ''),
                 notes=serializer.validated_data.get('notes', ''),
-                performed_by=request.user
+                performed_by=request.user,
+                auto_generate_lpn=auto_generate_lpn,
             )
             return Response(ProductStockLogSerializer(log).data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            msg = e.message if hasattr(e, 'message') else str(e)
+            return Response({"error": msg}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            # transaction.atomic will handle the rollback of the Batch creation
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

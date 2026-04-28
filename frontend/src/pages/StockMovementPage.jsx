@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import { apiFetch } from '../utils/api'
+import BatchSuccessModal from '../components/BatchSuccessModal'
 
 const PAGE_SIZE = 10
 
@@ -26,8 +27,10 @@ const emptyForm = {
   reference: '',
   notes: '',
   batch: '',
+  lpn: '',
   supplier: '',
-  auto_generate_batch: false,
+  auto_generate_batch: true,
+  auto_generate_lpn: true,
 }
 
 // Helper component for Quick Pick suggestions
@@ -227,6 +230,7 @@ const StockMovementPage = () => {
   const [locModalOpen, setLocModalOpen] = useState(false)
   const [form, setForm]           = useState(emptyForm)
   const [submitting, setSubmitting] = useState(false)
+  const [successLog, setSuccessLog] = useState(null)
   const [availableStock, setAvailableStock] = useState([])
   const [fetchingStock, setFetchingStock] = useState(false)
 
@@ -238,6 +242,7 @@ const StockMovementPage = () => {
       location: params.get('location') || '',
       material: params.get('material') || '',
       batch: params.get('batch') || '',
+      lpn: params.get('lpn') || '',
       supplier: params.get('supplier') || '',
     }
   })
@@ -329,17 +334,27 @@ const StockMovementPage = () => {
   
   useEffect(() => {
     if (form.material) {
-      fetchBatches(form.material)
       fetchAvailableStock(form.material)
     } else {
-      setBatches([])
       setAvailableStock([])
     }
   }, [form.material])
 
-  const fetchBatches = async (materialId) => {
+  useEffect(() => {
+    // For transfers, we fetch batches at the SOURCE location
+    const sourceLoc = form.movement_type === 'transfer_in' ? form.counterpart_location : form.location
+    if (form.material && sourceLoc) {
+      fetchBatches(form.material, sourceLoc)
+    } else {
+      setBatches([])
+    }
+  }, [form.material, form.location, form.counterpart_location, form.movement_type])
+
+  const fetchBatches = async (materialId, locationId) => {
     try {
-      const res = await apiFetch(`/inventory-core/batches/?batch_type=RAW&raw_material=${materialId}`)
+      let query = `?batch_type=RAW&raw_material=${materialId}`
+      if (locationId) query += `&location=${locationId}`
+      const res = await apiFetch(`/inventory-core/batches/${query}`)
       if (res && res.ok) {
         const data = await res.json()
         setBatches(Array.isArray(data) ? data : (data.results ?? []))
@@ -360,10 +375,12 @@ const StockMovementPage = () => {
     } catch { console.error('Failed to load filter batches') }
   }
 
-  const fetchAvailableStock = async (mid) => {
+  const fetchAvailableStock = async (mid, lid) => {
     setFetchingStock(true)
     try {
-      const res = await apiFetch(`/raw-materials-stock/stock/?material=${mid}&quantity=0.01`)
+      let query = `?material=${mid}&quantity=0.01`
+      if (lid) query += `&location=${lid}`
+      const res = await apiFetch(`/raw-materials-stock/stock/${query}`)
       if (res && res.ok) {
         const data = await res.json()
         const items = Array.isArray(data) ? data : (data.results ?? [])
@@ -393,8 +410,8 @@ const StockMovementPage = () => {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const isTransfer = form.movement_type === 'transfer_out'
-  const isOutbound = ['usage', 'wastage', 'transfer_out', 'return'].includes(form.movement_type)
+  const isTransfer = ['transfer_out', 'transfer_in'].includes(form.movement_type)
+  const isOutbound = ['usage', 'wastage', 'transfer_out', 'return', 'transfer_in'].includes(form.movement_type)
 
   const openAdd = () => {
     setForm(emptyForm)
@@ -428,8 +445,12 @@ const StockMovementPage = () => {
   const handlePick = (item) => {
     setForm(prev => ({
       ...prev,
-      location: item.location,
+      [prev.movement_type === 'transfer_in' ? 'counterpart_location' : 'location']: item.location,
       batch: item.batch,
+      lpn: item.lpn,
+      quantity: item.quantity, // Auto-fill full quantity
+      auto_generate_batch: false,
+      auto_generate_lpn: false,
     }))
   }
 
@@ -440,14 +461,25 @@ const StockMovementPage = () => {
     setSubmitting(true)
     setError('')
 
+    // Derive auto-generation flags from movement type
+    const isInbound = ['purchase', 'return'].includes(form.movement_type)
+    const isTransferOut = form.movement_type === 'transfer_out'
+    const isTransferIn = form.movement_type === 'transfer_in'
+    const isAdj = form.movement_type === 'adjustment'
+
+    const shouldAutoBatch = isInbound || (isAdj && form.auto_generate_batch)
+    const shouldAutoLPN = isInbound || isTransferOut || isTransferIn || (isAdj && form.auto_generate_lpn)
+
     const payload = {
       material:      parseInt(form.material),
       location:      parseInt(form.location),
       movement_type: form.movement_type,
       quantity:      parseFloat(form.quantity),
       batch:         form.batch ? parseInt(form.batch) : null,
+      lpn:           form.lpn ? parseInt(form.lpn) : null,
       supplier:      form.supplier ? parseInt(form.supplier) : null,
-      auto_generate_batch: form.auto_generate_batch,
+      auto_generate_batch: shouldAutoBatch,
+      auto_generate_lpn: shouldAutoLPN,
       reference:     form.reference?.trim() || '',
       notes:         form.notes?.trim() || '',
       counterpart_location: form.counterpart_location ? parseInt(form.counterpart_location) : null
@@ -462,7 +494,12 @@ const StockMovementPage = () => {
       const data = await res.json()
       if (res.ok) {
         fetchLogs()
-        closeModal()
+        // Show QR success modal if response contains batch/LPN codes
+        if (data.batch_code || data.lpn_code) {
+          setSuccessLog(data)
+        } else {
+          closeModal()
+        }
       } else {
         const firstError = Object.values(data).flat()[0]
         setError(firstError || 'Something went wrong.')
@@ -485,7 +522,7 @@ const StockMovementPage = () => {
 
           <p className="text-xs text-gray-400 mb-3">Raw Materials / Raw Materials Movements</p>
 
-          <div className="rounded-xl bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl bg-white shadow-sm min-h-[500px]">
 
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">Raw Materials Movement Log</h2>
@@ -619,67 +656,92 @@ const StockMovementPage = () => {
                   <tr>
                     <th className="px-6 py-3 w-10">No</th>
                     <th className="px-6 py-3">Material</th>
-                    <th className="px-6 py-3">Batch</th>
+                    <th className="px-6 py-3">Batch / LPN</th>
                     <th className="px-6 py-3">Movement</th>
                     <th className="px-6 py-3">Quantity</th>
-                    <th className="px-6 py-3">Location</th>
-                    <th className="px-6 py-3">Supplier</th>
-                    <th className="px-6 py-3">Transfer To/From</th>
-                    <th className="px-6 py-3">Balance After</th>
-                    <th className="px-6 py-3">Reference</th>
-                    <th className="px-6 py-3 text-right">Date</th>
+                    <th className="px-6 py-3">Location / Path</th>
+                    <th className="px-6 py-3">Balance</th>
+                    <th className="px-6 py-3">Date Recorded</th>
+                    <th className="px-6 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-6 py-10 text-center text-gray-400">No movement records found</td>
+                      <td colSpan={9} className="px-6 py-10 text-center text-gray-400">No entries found</td>
                     </tr>
                   ) : paginated.map((log, idx) => {
                     const mType = MOVEMENT_MAP[log.movement_type]
-                    const isOutbound = ['usage', 'wastage', 'transfer_out'].includes(log.movement_type)
-                    const supplierName = suppliers.find(s => s.id === log.supplier)?.name || '—'
                     return (
                       <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-3 text-gray-400 text-xs">{(page - 1) * PAGE_SIZE + idx + 1}</td>
-                        <td className="px-6 py-3 font-medium text-gray-900 text-xs">{log.material_name}</td>
+                        <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
+                        <td className="px-6 py-3 font-medium text-gray-900">{log.material_name}</td>
                         <td className="px-6 py-3">
-                          <span className="px-2 py-0.5 rounded font-mono text-[10px] text-orange-600 bg-orange-50 font-bold border border-orange-100">
-                             {log.batch_code || '—'}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-orange-600 bg-orange-50 font-bold border border-orange-100 inline-block w-fit">
+                               {log.batch_code || '—'}
+                            </span>
+                            {log.lpn_code && (
+                               <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-indigo-600 bg-indigo-50 font-bold border border-indigo-100 inline-block w-fit">
+                                 {log.lpn_code}
+                               </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-3">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${mType?.color ?? 'bg-gray-100 text-gray-600'}`}>
+                          <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-medium ${mType?.color ?? 'bg-gray-100 text-gray-600'}`}>
                             {mType?.label ?? log.movement_type}
                           </span>
                         </td>
+                        <td className="px-6 py-3 font-bold text-slate-800">
+                          {parseFloat(log.quantity).toLocaleString()} <span className="text-[10px] font-normal text-gray-400 uppercase">{log.unit}</span>
+                        </td>
+                        <td className="px-6 py-3 text-gray-500 text-xs">
+                          {log.movement_type.includes('transfer') ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2 leading-none">
+                                <span className="text-[9px] font-bold text-rose-500 w-8">FROM</span>
+                                <span className="font-medium text-slate-500 uppercase tracking-tight">{log.movement_type === 'transfer_out' ? log.location_name : log.counterpart_location_name}</span>
+                              </div>
+                              <div className="flex items-center gap-2 leading-none">
+                                <span className="text-[9px] font-bold text-emerald-500 w-8">TO</span>
+                                <span className="font-medium text-slate-800 uppercase tracking-tight">{log.movement_type === 'transfer_out' ? log.counterpart_location_name : log.location_name}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              <span className={`text-[9px] font-bold ${['usage', 'wastage', 'adjustment_out'].includes(log.movement_type) ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                {['usage', 'wastage', 'adjustment_out'].includes(log.movement_type) ? 'OUT (SOURCE)' : 'IN (DESTINATION)'}
+                              </span>
+                              <span className="font-medium text-slate-700 uppercase tracking-tight">{log.location_name}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-3 font-bold text-slate-900 italic">
+                          {parseFloat(log.balance_after).toLocaleString()} <span className="text-[10px] font-normal text-gray-400 uppercase">{log.unit}</span>
+                        </td>
+                        <td className="px-6 py-3 text-gray-400 text-xs text-center">
+                          {new Date(log.created_at).toLocaleDateString()}
+                        </td>
                         <td className="px-6 py-3">
-                          <span className={`font-semibold text-xs ${isOutbound ? 'text-red-500' : 'text-green-600'}`}>
-                            {isOutbound ? '−' : '+'}{parseFloat(log.quantity).toLocaleString()}
-                            <span className="ml-1 text-[10px] font-normal text-gray-400">{log.unit}</span>
-                          </span>
-                        </td>
-                        <td className="px-6 py-3 text-gray-500 text-[10px]">{log.location_name}</td>
-                        <td className="px-6 py-3 text-gray-500 text-[10px]">{supplierName}</td>
-                        <td className="px-6 py-3 text-gray-400 text-[10px]">
-                          {log.counterpart_location_name || '—'}
-                        </td>
-                        <td className="px-6 py-3 text-gray-700 font-medium text-xs">
-                          {parseFloat(log.balance_after).toLocaleString()}
-                          <span className="ml-1 text-[10px] font-normal text-gray-400">{log.unit}</span>
-                        </td>
-                        <td className="px-6 py-3 text-gray-400 text-[10px] max-w-[120px] truncate">
-                          {log.reference || '—'}
-                        </td>
-                        <td className="px-6 py-3 text-right text-gray-400 text-[10px]">
-                          {log.created_at ? new Date(log.created_at).toLocaleDateString() : '—'}
+                          <button
+                             onClick={() => setSuccessLog(log)}
+                             disabled={!log.lpn_code}
+                             className="rounded-lg bg-orange-500 p-1.5 text-white hover:bg-orange-600 disabled:opacity-30 flex items-center justify-center transition-all shadow-sm"
+                             title={log.lpn_code ? "View/Print LPN Label" : "Only LPNs can have labels"}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM13 13h2v2h-2v-2zm2 2h2v2h-2v-2zm2-2h2v2h-2v-2zm2 2h2v2h-2v-2zm-2 2h2v2h-2v-2zm0-4h2v2h-2v-2zm-2 2h2v2h-2v-2z" />
+                            </svg>
+                          </button>
                         </td>
                       </tr>
                     )
                   })}
                 </tbody>
-              </table>
-            )}
+                </table>
+              )
+            }
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
@@ -715,7 +777,7 @@ const StockMovementPage = () => {
                 <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</div>
               )}
 
-              <div className="grid grid-cols-2 gap-6 pb-6 border-b border-slate-50">
+               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-6 border-b border-slate-50">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Material *</label>
                   <select
@@ -741,6 +803,20 @@ const StockMovementPage = () => {
                     {MOVEMENT_TYPES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-1">Quantity * ({unitLabel})</label>
+                  <input
+                    name="quantity"
+                    type="number"
+                    step="any"
+                    placeholder="0.00"
+                    value={form.quantity}
+                    onChange={handleChange}
+                    onWheel={(e) => e.target.blur()}
+                    className="w-full rounded-lg border border-orange-200 bg-orange-50/30 px-3 py-2 text-sm font-bold text-orange-700 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
+                  />
+                </div>
+              </div>
 
                 {fetchingStock ? (
                    <div className="col-span-2 p-4 text-center border-2 border-dashed border-slate-100 rounded-xl">
@@ -758,39 +834,115 @@ const StockMovementPage = () => {
                   )
                 )}
 
+              <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Batch</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Batch / LPN</label>
                   <div className="flex flex-col gap-2">
-                    <select
-                      name="batch"
-                      value={form.batch || ''}
-                      onChange={handleChange}
-                      disabled={form.auto_generate_batch}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none disabled:bg-gray-50 disabled:text-gray-400 font-mono"
-                    >
-                      <option value="">No Batch / NA</option>
-                      {batches.map(b => (
-                        <option key={b.id} value={b.id}>
-                          {b.batch_code} ({parseFloat(b.current_stock).toLocaleString()} qty)
-                        </option>
-                      ))}
-                    </select>
-                    
-                    {['purchase', 'return', 'adjustment'].includes(form.movement_type) && (
-                      <label className="flex items-center gap-2 cursor-pointer group">
-                        <input
-                          type="checkbox"
-                          checked={form.auto_generate_batch}
-                          onChange={e => setForm(f => ({ ...f, auto_generate_batch: e.target.checked, batch: e.target.checked ? '' : f.batch }))}
-                          className="w-3.5 h-3.5 rounded border-gray-300 text-orange-500 focus:ring-orange-200"
-                        />
-                        <span className="text-[10px] font-semibold text-slate-500 group-hover:text-orange-600 transition-colors">
-                          Generate New Batch automatically
-                        </span>
-                      </label>
+
+                    {/* INBOUND movements: auto-generate, no choice needed */}
+                    {['purchase', 'return'].includes(form.movement_type) ? (
+                      <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-[11px] font-bold text-emerald-700">
+                            New Batch + LPN will be auto-generated
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-emerald-600 mt-1 ml-6">
+                          A unique batch code and LPN label will be created for this inbound movement.
+                        </p>
+                      </div>
+
+                    /* OUTBOUND movements: must select existing batch */
+                    ) : ['usage', 'wastage'].includes(form.movement_type) ? (
+                      <>
+                        <select
+                          name="batch"
+                          value={form.batch || ''}
+                          onChange={handleChange}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none font-mono"
+                        >
+                          <option value="">Select Batch *</option>
+                          {batches.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.batch_code} ({parseFloat(b.current_stock).toLocaleString()} qty)
+                            </option>
+                          ))}
+                        </select>
+                        {!form.batch && (
+                          <p className="text-[10px] text-amber-600 font-medium flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                            Select the batch you're drawing stock from
+                          </p>
+                        )}
+                      </>
+
+                    /* TRANSFER: select existing batch, LPN auto-generated at destination */
+                    ) : ['transfer_out', 'transfer_in'].includes(form.movement_type) ? (
+                      <>
+                        <select
+                          name="batch"
+                          value={form.batch || ''}
+                          onChange={handleChange}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none font-mono"
+                        >
+                          <option value="">Select Batch *</option>
+                          {batches.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.batch_code} ({parseFloat(b.current_stock).toLocaleString()} qty)
+                            </option>
+                          ))}
+                        </select>
+                        <div className={`p-2.5 rounded-lg border ${form.movement_type === 'transfer_out' ? 'bg-violet-50 border-violet-200' : 'bg-indigo-50 border-indigo-200'}`}>
+                          <p className={`text-[10px] font-bold flex items-center gap-1.5 ${form.movement_type === 'transfer_out' ? 'text-violet-600' : 'text-indigo-600'}`}>
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                            </svg>
+                            {form.movement_type === 'transfer_out' ? 'A new LPN will be auto-assigned at the destination' : 'A new LPN will be auto-assigned in this warehouse'}
+                          </p>
+                        </div>
+                      </>
+
+                    /* ADJUSTMENT: optional toggle for new batch */
+                    ) : form.movement_type === 'adjustment' ? (
+                      <>
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={form.auto_generate_batch}
+                            onChange={e => setForm(f => ({ ...f, auto_generate_batch: e.target.checked, batch: '', auto_generate_lpn: e.target.checked }))}
+                            className="w-3.5 h-3.5 rounded border-gray-300 text-orange-500 focus:ring-orange-200"
+                          />
+                          <span className="text-[10px] font-semibold text-slate-500 group-hover:text-orange-600 transition-colors">
+                            Create new Batch + LPN (positive adjustment)
+                          </span>
+                        </label>
+                        {!form.auto_generate_batch && (
+                          <select
+                            name="batch"
+                            value={form.batch || ''}
+                            onChange={handleChange}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none font-mono"
+                          >
+                            <option value="">Select Existing Batch</option>
+                            {batches.map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.batch_code} ({parseFloat(b.current_stock).toLocaleString()} qty)
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </>
+
+                    /* No movement type selected yet */
+                    ) : (
+                      <p className="text-[10px] text-slate-400 italic py-2">Select a movement type first</p>
                     )}
+
                   </div>
-                  {!form.material && !form.auto_generate_batch && <p className="text-[10px] text-slate-400 mt-1">Select material first to see batches</p>}
+                  {!form.material && <p className="text-[10px] text-slate-400 mt-1">Select material first to see batches</p>}
                 </div>
 
                 <div>
@@ -809,6 +961,9 @@ const StockMovementPage = () => {
               </div>
 
               <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 leading-none">
+                  {form.movement_type === 'transfer_in' ? 'Destination Location (To) *' : (isTransfer ? 'Source Location (From) *' : 'Location *')}
+                </p>
                 <CascadingLocationSelector
                   locations={locations}
                   value={form.location}
@@ -817,43 +972,22 @@ const StockMovementPage = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Quantity *</label>
-                  <div className="relative">
-                    <input
-                      name="quantity"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.quantity}
-                      onChange={handleChange}
-                      placeholder="0.00"
-                      className="w-full rounded-lg border border-gray-200 pl-3 pr-12 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
-                    />
-                    {unitLabel && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-gray-200 uppercase tracking-tighter">
-                        {unitLabel}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Reference</label>
-                  <input
-                    name="reference"
-                    value={form.reference}
-                    onChange={handleChange}
-                    placeholder="PO number, order ID..."
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Reference</label>
+                <input
+                  name="reference"
+                  value={form.reference}
+                  onChange={handleChange}
+                  placeholder="PO number, order ID..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all outline-none"
+                />
               </div>
 
               {isTransfer && (
-                <div className="bg-pink-50/30 p-4 rounded-xl border border-pink-100">
-                  <p className="text-[10px] font-black text-pink-500 uppercase tracking-[0.2em] mb-3 leading-none">To Location (Destination)</p>
+                <div className={`${form.movement_type === 'transfer_out' ? 'bg-pink-50/30 border-pink-100' : 'bg-indigo-50/30 border-indigo-100'} p-4 rounded-xl border`}>
+                  <p className={`text-[10px] font-black uppercase tracking-[0.2em] mb-3 leading-none ${form.movement_type === 'transfer_out' ? 'text-pink-500' : 'text-indigo-500'}`}>
+                    {form.movement_type === 'transfer_out' ? 'Destination Location (To) *' : 'Source Location (From) *'}
+                  </p>
                   <CascadingLocationSelector
                     locations={locations}
                     value={form.counterpart_location}
@@ -901,6 +1035,15 @@ const StockMovementPage = () => {
         onAdd={addLocation}
         locations={locations}
       />
+      {successLog && (
+        <BatchSuccessModal 
+          log={successLog} 
+          onClose={() => {
+            setSuccessLog(null)
+            closeModal()
+          }} 
+        />
+      )}
     </div>
   )
 }

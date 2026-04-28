@@ -22,13 +22,21 @@ class RawMaterialStock(models.Model):
         on_delete=models.PROTECT,
         related_name='stock_levels'
     )
+    lpn = models.ForeignKey(
+        'inventory_core.LPN',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='raw_material_stock_levels',
+        help_text="The physical License Plate Number containing this stock (e.g. split roll, pallet)."
+    )
 
     quantity = models.DecimalField(max_digits=14, decimal_places=4, default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'raw_material_stock'
-        unique_together = ('material', 'location', 'batch')
+        unique_together = ('material', 'location', 'batch', 'lpn')
         ordering = ['material__name', 'location__name']
 
     def __str__(self):
@@ -47,12 +55,12 @@ class RawMaterialStockLog(models.Model):
         ('purchase',     'Purchase / Receipt'),
         ('return',       'Return from Production'),
         ('transfer_in',  'Transfer In'),
+        ('adjustment_in', 'Adjustment (In)'),
         # Outbound
         ('usage',        'Usage in Production'),
         ('wastage',      'Wastage / Damage'),
         ('transfer_out', 'Transfer Out'),
-        # Neutral
-        ('adjustment',   'Stock Adjustment'),
+        ('adjustment',   'Adjustment (Out)'),
     ]
 
     # What moved
@@ -109,6 +117,13 @@ class RawMaterialStockLog(models.Model):
         on_delete=models.PROTECT,
         related_name='stock_logs'
     )
+    lpn = models.ForeignKey(
+        'inventory_core.LPN',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='raw_material_stock_logs'
+    )
     supplier = models.ForeignKey(
         'master_data.Supplier',
         null=True,
@@ -137,8 +152,8 @@ class RawMaterialStockLog(models.Model):
     # Helpers
     # ------------------------------------------------------------------
 
-    INBOUND_TYPES = {'purchase', 'return', 'transfer_in', 'adjustment'}
-    OUTBOUND_TYPES = {'usage', 'wastage', 'transfer_out'}
+    INBOUND_TYPES = {'purchase', 'return', 'transfer_in', 'adjustment_in'}
+    OUTBOUND_TYPES = {'usage', 'wastage', 'transfer_out', 'adjustment'}
 
     @property
     def is_inbound(self):
@@ -163,11 +178,14 @@ class RawMaterialStockLog(models.Model):
         movement_type,
         quantity,
         batch=None,
+        lpn=None,
         supplier=None,
         performed_by=None,
         reference='',
         notes='',
         counterpart_location=None,
+        auto_generate_lpn=False,
+        _internal=False, # New flag to prevent infinite loops
     ):
         """
         Record a stock movement and update the RawMaterialStock snapshot.
@@ -185,11 +203,22 @@ class RawMaterialStockLog(models.Model):
         # Determine sign
         is_inbound = movement_type in cls.INBOUND_TYPES
 
+        # Global LPN generation logic:
+        # 1. Transfers ALWAYS get a new LPN at the destination
+        # 2. Other inbounds get an LPN if auto_generate_lpn is True
+        if not lpn and batch:
+            if movement_type == 'transfer_in' or (is_inbound and auto_generate_lpn):
+                from inventory_core.services.batch_service import BatchService
+                from inventory_core.models import LPN
+                lpn_code = BatchService.generate_lpn_code(batch)
+                lpn = LPN.objects.create(lpn_code=lpn_code, batch=batch)
+
         # Lock the stock row to prevent race conditions
         stock, _ = RawMaterialStock.objects.select_for_update().get_or_create(
             material=material,
             location=location,
             batch=batch,
+            lpn=lpn,
             defaults={'quantity': 0},
         )
 
@@ -217,23 +246,50 @@ class RawMaterialStockLog(models.Model):
             performed_by=performed_by,
             counterpart_location=counterpart_location,
             batch=batch,
+            lpn=lpn,
             supplier=supplier,
         )
 
         # Handle the paired leg of a transfer automatically
-        if movement_type == 'transfer_out':
-            if not counterpart_location:
-                raise ValidationError("counterpart_location is required for transfers.")
-            cls.create_movement(
-                material=material,
-                location=counterpart_location,
-                movement_type='transfer_in',
-                quantity=quantity,
-                batch=batch, 
-                performed_by=performed_by,
-                reference=reference,
-                notes=notes,
-                counterpart_location=location,
-            )
+        if not _internal:
+            if movement_type == 'transfer_out':
+                if not counterpart_location:
+                    raise ValidationError("counterpart_location is required for transfers.")
+
+                # We call the destination leg. It will generate its own LPN.
+                return cls.create_movement(
+                    material=material,
+                    location=counterpart_location,
+                    movement_type='transfer_in',
+                    quantity=quantity,
+                    batch=batch, 
+                    lpn=None, # Let the destination leg generate its own LPN
+                    supplier=supplier,
+                    performed_by=performed_by,
+                    reference=reference,
+                    notes=notes,
+                    counterpart_location=location,
+                    _internal=True,
+                )
+            
+            elif movement_type == 'transfer_in':
+                if not counterpart_location:
+                    raise ValidationError("counterpart_location (source) is required for manual transfers.")
+                
+                # If recording a Transfer In manually, we must deduct from Source
+                return cls.create_movement(
+                    material=material,
+                    location=counterpart_location,
+                    movement_type='transfer_out',
+                    quantity=quantity,
+                    batch=batch,
+                    lpn=None, # Source LPN might be unknown or being picked
+                    supplier=supplier,
+                    performed_by=performed_by,
+                    reference=reference,
+                    notes=notes,
+                    counterpart_location=location,
+                    _internal=True,
+                )
 
         return log

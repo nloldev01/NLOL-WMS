@@ -136,9 +136,11 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         batch = serializer.validated_data.get('batch')
+        lpn = serializer.validated_data.get('lpn')
         supplier = serializer.validated_data.get('supplier')
         material = serializer.validated_data['material']
         auto_generate = serializer.validated_data.get('auto_generate_batch', False)
+        auto_generate_lpn = serializer.validated_data.get('auto_generate_lpn', False)
 
         # Logic: If batch is selected, take its supplier
         if batch and batch.supplier:
@@ -153,24 +155,31 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
                 raw_material=material,
                 supplier=supplier # Link provided supplier to new batch
             )
+            
+        # For positive adjustments (auto-generated batch), treat as inbound
+        movement_type = serializer.validated_data['movement_type']
+        if movement_type == 'adjustment' and auto_generate:
+            movement_type = 'adjustment_in'
 
         try:
             log = RawMaterialStockLog.create_movement(
                 material=serializer.validated_data['material'],
                 location=serializer.validated_data['location'],
-                movement_type=serializer.validated_data['movement_type'],
+                movement_type=movement_type,
                 quantity=serializer.validated_data['quantity'],
                 batch=batch,
+                lpn=lpn,
                 supplier=supplier,
                 counterpart_location=serializer.validated_data.get('counterpart_location'),
                 reference=serializer.validated_data.get('reference', ''),
                 notes=serializer.validated_data.get('notes', ''),
                 performed_by=request.user,
+                auto_generate_lpn=auto_generate_lpn,
             )
         except ValidationError as e:
-            # Rollback happens automatically
+            msg = e.message if hasattr(e, 'message') else str(e)
             return Response(
-                {'detail': e.message},
+                {'error': msg},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

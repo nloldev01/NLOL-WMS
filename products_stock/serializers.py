@@ -8,12 +8,13 @@ class ProductStockSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')
     location_name = serializers.ReadOnlyField(source='location.get_full_path')
     batch_code = serializers.ReadOnlyField(source='batch.batch_code')
+    lpn_code = serializers.ReadOnlyField(source='lpn.lpn_code')
     unit = serializers.ReadOnlyField(source='product.unit.symbol')
 
     class Meta:
         model = ProductStock
         fields = [
-            'id', 'product', 'product_name', 'batch', 'batch_code',
+            'id', 'product', 'product_name', 'batch', 'batch_code', 'lpn', 'lpn_code',
             'location', 'location_name', 'quantity', 'unit', 'updated_at'
         ]
 
@@ -22,13 +23,14 @@ class ProductStockLogSerializer(serializers.ModelSerializer):
     location_name = serializers.ReadOnlyField(source='location.get_full_path')
     counterpart_location_name = serializers.ReadOnlyField(source='counterpart_location.get_full_path')
     batch_code = serializers.ReadOnlyField(source='batch.batch_code')
+    lpn_code = serializers.ReadOnlyField(source='lpn.lpn_code')
     unit = serializers.ReadOnlyField(source='product.unit.symbol')
     performer_name = serializers.ReadOnlyField(source='performed_by.username')
 
     class Meta:
         model = ProductStockLog
         fields = [
-            'id', 'product', 'product_name', 'batch', 'batch_code',
+            'id', 'product', 'product_name', 'batch', 'batch_code', 'lpn', 'lpn_code',
             'location', 'location_name', 'movement_type', 'quantity',
             'balance_after', 'unit', 'reference', 'notes',
             'supplier',
@@ -42,11 +44,13 @@ class ProductMovementSerializer(serializers.Serializer):
     movement_type        = serializers.ChoiceField(choices=ProductStockLog.MOVEMENT_CHOICES)
     quantity             = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal('0.01'))
     batch                = serializers.PrimaryKeyRelatedField(queryset=Batch.objects.all(), required=False, allow_null=True)
+    lpn                  = serializers.PrimaryKeyRelatedField(queryset=Batch.objects.all().model._meta.get_field('lpns').related_model.objects.all(), required=False, allow_null=True)
     supplier             = serializers.PrimaryKeyRelatedField(queryset=Batch.objects.all().model._meta.get_field('supplier').related_model.objects.all(), required=False, allow_null=True)
     counterpart_location = serializers.PrimaryKeyRelatedField(queryset=Location.objects.all(), required=False, allow_null=True)
     reference            = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
     notes                = serializers.CharField(required=False, allow_blank=True, default='')
     auto_generate_batch  = serializers.BooleanField(required=False, default=False)
+    auto_generate_lpn    = serializers.BooleanField(required=False, default=False)
 
     def validate(self, data):
         batch = data.get('batch')
