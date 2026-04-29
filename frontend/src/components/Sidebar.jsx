@@ -13,6 +13,8 @@ import {
   ClipboardDocumentListIcon,
   ExclamationTriangleIcon,
   CreditCardIcon,
+  MapIcon,
+  FingerPrintIcon
 } from '@heroicons/react/24/outline'
 
 const Sidebar = () => {
@@ -30,6 +32,8 @@ const Sidebar = () => {
     'purchase-orders': ClipboardDocumentListIcon,
     'system-logs': ExclamationTriangleIcon,
     'counter-sales': CreditCardIcon,
+    // 'inventory-explorer': MapIcon,
+    'stock-identity': FingerPrintIcon,
   }
 
   const menuData = [
@@ -66,6 +70,8 @@ const Sidebar = () => {
         { id: 'product-stock-logs', label: 'Product Stock Logs', path: '/stock/product-logs' },
         { id: 'raw-material-stock-logs', label: 'Raw Material Stock Logs', path: '/stock/raw-materials-logs' },
         { id: 'batches', label: 'Batches', path: '/stock/batches' },
+        { id: 'inventory-explorer', label: 'Inventory Explorer', path: '/stock/inventory-explorer' },
+        { id: 'lpn-finder', label: 'LPN Finder', path: '/stock/lpn-finder' },
       ],
     },  
     {

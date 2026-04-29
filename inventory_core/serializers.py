@@ -45,3 +45,18 @@ class BatchSerializer(serializers.ModelSerializer):
 
     def get_lpns(self, obj):
         return [{'id': lpn.id, 'lpn_code': lpn.lpn_code} for lpn in obj.lpns.all()]
+
+
+class LPNSerializer(serializers.ModelSerializer):
+    batch_code = serializers.CharField(source='batch.batch_code', read_only=True)
+    batch_type = serializers.CharField(source='batch.batch_type', read_only=True)
+    material_name = serializers.CharField(source='batch.raw_material.name', read_only=True)
+    product_name = serializers.CharField(source='batch.product.name', read_only=True)
+
+    class Meta:
+        from .models import LPN
+        model = LPN
+        fields = [
+            'id', 'lpn_code', 'batch', 'batch_code', 'batch_type', 
+            'material_name', 'product_name', 'created_at', 'is_active'
+        ]

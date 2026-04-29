@@ -13,6 +13,7 @@
     "@heroicons/react": "^2.2.0",
     "dom": "^0.0.3",
     "heroicons": "^2.2.0",
+    "html5-qrcode": "^2.3.8",
     "jspdf": "^4.2.1",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",

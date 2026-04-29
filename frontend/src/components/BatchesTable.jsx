@@ -82,6 +82,8 @@ const BatchQRModal = ({ item, onClose }) => {
   );
 };
 
+const PAGE_SIZE = 10;
+
 const BATCH_TYPE_CHOICES = [
   { value: 'RAW', label: 'Raw Material' },
   { value: 'PRD', label: 'Product' },
