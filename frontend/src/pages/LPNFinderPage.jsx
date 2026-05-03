@@ -10,6 +10,7 @@ import {
   CubeIcon, 
   ArchiveBoxIcon,
   ArrowRightIcon,
+  ArrowLeftIcon,
   MagnifyingGlassIcon,
   InformationCircleIcon
 } from '@heroicons/react/24/outline'
@@ -384,7 +385,7 @@ const LPNFinderPage = () => {
                             <div className="flex justify-between items-start">
                               <div className="flex gap-3">
                                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isInbound ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                                  {isInbound ? <ArrowRightIcon className="w-4 h-4 rotate-180" /> : <ArrowRightIcon className="w-4 h-4" />}
+                                  {isInbound ? <ArrowLeftIcon className="w-4 h-4" /> : <ArrowRightIcon className="w-4 h-4" />}
                                 </div>
                                 <div>
                                   <div className="flex items-center gap-2">
@@ -400,7 +401,11 @@ const LPNFinderPage = () => {
                                     <p className="text-[10px] font-bold text-slate-500">{log.location_name}</p>
                                     {log.counterpart_location_name && (
                                       <>
-                                        <ArrowRightIcon className="w-2.5 h-2.5 text-slate-300" />
+                                        {isInbound ? (
+                                          <ArrowLeftIcon className="w-2.5 h-2.5 text-slate-300" />
+                                        ) : (
+                                          <ArrowRightIcon className="w-2.5 h-2.5 text-slate-300" />
+                                        )}
                                         <p className="text-[10px] font-bold text-slate-500">{log.counterpart_location_name}</p>
                                       </>
                                     )}
