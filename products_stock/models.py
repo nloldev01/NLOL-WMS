@@ -106,6 +106,27 @@ class ProductStockLog(models.Model):
         if quantity <= 0:
             raise ValidationError("Quantity must be positive.")
 
+        # ---- INTERCEPT MANUAL TRANSFER IN ----
+        if movement_type == 'transfer_in' and not _internal:
+            if not counterpart_location:
+                raise ValidationError("Counterpart location (source) required for manual transfers.")
+            
+            return cls.create_movement(
+                product=product,
+                location=counterpart_location,
+                movement_type='transfer_out',
+                quantity=quantity,
+                batch=batch,
+                lpn=lpn,
+                supplier=supplier,
+                performed_by=performed_by,
+                reference=reference,
+                notes=notes,
+                counterpart_location=location,
+                auto_generate_lpn=auto_generate_lpn,
+                _internal=False,
+            )
+
         # Determine if this movement INCREASES or DECREASES stock
         # For transfers, we'll handle the logic recursively or explicitly
         is_inbound = movement_type in cls.INBOUND_TYPES
@@ -179,25 +200,4 @@ class ProductStockLog(models.Model):
                     counterpart_location=location,
                     _internal=True,
                 )
-            
-            elif movement_type == 'transfer_in':
-                if not counterpart_location:
-                    raise ValidationError("Counterpart location (source) required for manual transfers.")
-                
-                # If recording a Transfer In manually, we must deduct from Source
-                return cls.create_movement(
-                    product=product,
-                    location=counterpart_location,
-                    movement_type='transfer_out',
-                    quantity=quantity,
-                    batch=batch,
-                    lpn=None, # Source LPN might be unknown or being picked
-                    supplier=supplier,
-                    performed_by=performed_by,
-                    reference=reference,
-                    notes=notes,
-                    counterpart_location=location,
-                    _internal=True,
-                )
-
         return log

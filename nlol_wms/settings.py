@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'raw_materials_stock',
     'products_stock',
     'inventory_core',
+    'production',
 ]
 
 MIDDLEWARE = [

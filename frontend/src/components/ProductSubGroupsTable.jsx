@@ -83,7 +83,7 @@ export default function ProductSubGroupsTable() {
   // ── Submit (Create / Update) ──────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!form.name.trim()) return setError('Sub-group name is required.')
-    if (!form.group) return setError('Please select a product group.')
+    if (!form.group) return setError('Please select a data group.')
 
     setSubmitting(true)
     setError('')
@@ -123,7 +123,7 @@ export default function ProductSubGroupsTable() {
 
         {/* Table Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">Product Sub-Groups</h2>
+          <h2 className="text-base font-semibold text-gray-900">Sub Groups</h2>
           <div className="flex items-center gap-3">
             <button
               onClick={openAdd}
@@ -132,7 +132,7 @@ export default function ProductSubGroupsTable() {
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add Sub-Group
+              Add Sub Group
             </button>
             <div className="relative">
               <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -164,7 +164,7 @@ export default function ProductSubGroupsTable() {
             <tbody className="divide-y divide-gray-50">
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-gray-400">No product sub-groups found</td>
+                  <td colSpan={4} className="px-6 py-10 text-center text-gray-400">No sub groups found</td>
                 </tr>
               ) : paginated.map((sg, idx) => (
                 <tr key={sg.id} className="hover:bg-gray-50 transition-colors">
@@ -220,7 +220,7 @@ export default function ProductSubGroupsTable() {
 
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">
-                {editSubGroup ? 'Edit Product Sub-Group' : 'Add New Product Sub-Group'}
+                {editSubGroup ? 'Edit Sub Group' : 'Add New Sub Group'}
               </h3>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
@@ -230,7 +230,7 @@ export default function ProductSubGroupsTable() {
                 <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</div>
               )}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Product Group *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Data Group *</label>
                 <select
                   name="group"
                   value={form.group}
@@ -267,7 +267,7 @@ export default function ProductSubGroupsTable() {
                 disabled={submitting}
                 className="rounded-lg bg-orange-500 px-6 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
               >
-                {submitting ? 'Saving...' : editSubGroup ? 'Update Sub-Group' : 'Create Sub-Group'}
+                {submitting ? 'Saving...' : editSubGroup ? 'Update Sub Group' : 'Create Sub Group'}
               </button>
             </div>
 

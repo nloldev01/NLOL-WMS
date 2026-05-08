@@ -20,6 +20,7 @@ const InventoryExplorerPage = () => {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedLocations, setExpandedLocations] = useState({})
+  const [selectedReportLocation, setSelectedReportLocation] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -58,15 +59,58 @@ const InventoryExplorerPage = () => {
     }))
   }
 
-  // Group locations by their hierarchy (simplified view)
+  // Get all locations in the hierarchy
+  const getDescendantLocationIds = (parentId) => {
+    const ids = [];
+    const queue = [parentId];
+    while(queue.length > 0) {
+      const current = queue.shift();
+      ids.push(current);
+      const children = locations.filter(l => l.parent === current).map(l => l.id);
+      queue.push(...children);
+    }
+    return ids;
+  }
+
+  // Group locations by their hierarchy
   const getStockForLocation = (locationId) => {
-    const raw = rawStock.filter(s => s.location === locationId && s.quantity > 0)
-    const prod = productStock.filter(s => s.location === locationId && s.quantity > 0)
+    const locationIds = getDescendantLocationIds(locationId);
+    const raw = rawStock.filter(s => locationIds.includes(s.location) && parseFloat(s.quantity) > 0)
+    const prod = productStock.filter(s => locationIds.includes(s.location) && parseFloat(s.quantity) > 0)
     return { raw, prod }
   }
 
+  const groupStockItems = (items) => {
+    const grouped = {};
+    items.forEach(item => {
+      const name = item.type === 'raw' ? item.material_name : item.product_name;
+      const key = `${item.type}||${name}||${item.unit || ''}`;
+      const batchLabel = item.batch_code || item.lpn_code || 'NO_BATCH';
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          ...item,
+          quantity: parseFloat(item.quantity),
+          locations: [item.location],
+          batchLabels: new Set([batchLabel])
+        };
+      } else {
+        grouped[key].quantity += parseFloat(item.quantity);
+        grouped[key].locations.push(item.location);
+        grouped[key].batchLabels.add(batchLabel);
+      }
+    });
+    return Object.values(grouped).map(item => ({
+      ...item,
+      quantity: item.quantity.toString(),
+      batchLabel: item.batchLabels.size === 1 ? [...item.batchLabels][0] : 'MULTIPLE BATCHES'
+    }));
+  }
+
+  const parentLocations = locations.filter(loc => loc.parent === null);
+
   // Filter locations based on search query or if they have stock
-  const filteredLocations = locations.filter(loc => {
+  const filteredLocations = parentLocations.filter(loc => {
     const query = searchQuery.toLowerCase()
     
     // Check if location name matches
@@ -145,26 +189,41 @@ const InventoryExplorerPage = () => {
 
                     <div className="p-3 flex-1 overflow-y-auto max-h-48 space-y-3">
                       {/* Combined Items View */}
-                      {[...raw.map(r => ({...r, type: 'raw'})), ...prod.map(p => ({...p, type: 'prod'}))].map((item, idx) => (
-                        <div key={idx} className="group relative">
-                          <div className="flex justify-between items-start gap-2">
-                             <div className="flex-1 min-w-0">
-                               <p className="text-[11px] font-bold text-slate-700 truncate leading-tight">
-                                 {item.type === 'raw' ? item.material_name : item.product_name}
-                               </p>
-                               <p className="text-[9px] font-mono text-slate-400 truncate">
-                                 {item.batch_code}
-                               </p>
-                             </div>
-                             <div className="text-right">
-                               <p className={`text-[11px] font-black ${item.type === 'raw' ? 'text-blue-600' : 'text-orange-600'}`}>
-                                 {parseFloat(item.quantity).toLocaleString()}
-                               </p>
-                               <p className="text-[8px] font-bold text-slate-400 uppercase leading-none">{item.unit}</p>
-                             </div>
+                      {(() => {
+                        const combinedItems = groupStockItems([...raw.map(r => ({...r, type: 'raw'})), ...prod.map(p => ({...p, type: 'prod'}))]);
+                        return combinedItems.map((item, idx) => {
+                          const exactLocations = [...new Set(item.locations)].map(locationId => locations.find(l => l.id === locationId)).filter(Boolean);
+                          const locationLabel = exactLocations.length === 1
+                            ? (exactLocations[0].full_code || exactLocations[0].full_path || exactLocations[0].name)
+                            : `${exactLocations.length} sub locations`;
+                          return (
+                          <div key={idx} className="group relative border-b border-slate-50 last:border-0 pb-2 mb-2 last:mb-0 last:pb-0">
+                            <div className="flex justify-between items-start gap-2">
+                               <div className="flex-1 min-w-0">
+                                 <p className="text-[11px] font-bold text-slate-700 truncate leading-tight">
+                                   {item.type === 'raw' ? item.material_name : item.product_name}
+                                 </p>
+                                 <div className="flex items-center gap-1 mt-0.5 overflow-hidden">
+                                   <p className="text-[9px] font-mono text-slate-500 bg-slate-100 px-1 rounded flex-shrink-0">
+                                     {item.batchLabel === 'NO_BATCH' ? 'NO BATCH' : item.batchLabel}
+                                   </p>
+                                   <div className="overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent pb-0.5">
+                                     <p className="text-[8px] font-bold text-slate-400 uppercase inline-block">
+                                       @ {locationLabel}
+                                     </p>
+                                   </div>
+                                 </div>
+                               </div>
+                               <div className="text-right">
+                                 <p className={`text-[11px] font-black ${item.type === 'raw' ? 'text-blue-600' : 'text-orange-600'}`}>
+                                   {parseFloat(item.quantity).toLocaleString()}
+                                 </p>
+                                 <p className="text-[8px] font-bold text-slate-400 uppercase leading-none">{item.unit}</p>
+                               </div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )})
+                      })()}
 
                       {!hasAnyStock && (
                         <div className="py-4 text-center">
@@ -175,13 +234,21 @@ const InventoryExplorerPage = () => {
                     
                     {hasAnyStock && (
                       <div className="px-3 py-2 bg-slate-50/50 border-t border-slate-50 flex justify-between items-center">
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                          {raw.length + prod.length} Units
-                        </span>
-                        <div className="flex gap-1">
-                          {raw.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>}
-                          {prod.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                            {groupStockItems([...raw.map(r => ({...r, type: 'raw'})), ...prod.map(p => ({...p, type: 'prod'}))]).length} Combined Items
+                          </span>
+                          <div className="flex gap-1">
+                            {raw.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>}
+                            {prod.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>}
+                          </div>
                         </div>
+                        <button 
+                          onClick={() => setSelectedReportLocation(loc)}
+                          className="text-[9px] font-bold text-orange-500 hover:text-orange-600 uppercase tracking-wider"
+                        >
+                          Details
+                        </button>
                       </div>
                     )}
                   </div>
@@ -203,6 +270,63 @@ const InventoryExplorerPage = () => {
               >
                 Clear all filters
               </button>
+            </div>
+          )}
+
+          {/* Detailed Report Modal */}
+          {selectedReportLocation && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                  <div>
+                    <h2 className="text-xl font-black text-slate-900">Detailed Report: {selectedReportLocation.name}</h2>
+                    <p className="text-sm font-medium text-slate-500 mt-1">{selectedReportLocation.full_code || selectedReportLocation.full_path}</p>
+                  </div>
+                  <button onClick={() => setSelectedReportLocation(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                    <svg className="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-auto p-0">
+                  <table className="w-full text-left text-sm text-slate-600">
+                    <thead className="bg-slate-50 text-xs uppercase text-slate-400 sticky top-0 shadow-sm">
+                      <tr>
+                        <th className="px-6 py-4 font-bold">Item</th>
+                        <th className="px-6 py-4 font-bold">Type</th>
+                        <th className="px-6 py-4 font-bold">Batch / LPN</th>
+                        <th className="px-6 py-4 font-bold">Exact Location Code</th>
+                        <th className="px-6 py-4 text-right font-bold">Quantity</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(() => {
+                        const { raw, prod } = getStockForLocation(selectedReportLocation.id);
+                        const items = [...raw.map(r => ({...r, type: 'Raw Material'})), ...prod.map(p => ({...p, type: 'Product'}))];
+                        return items.map((item, idx) => {
+                          const exactLoc = locations.find(l => l.id === item.location);
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-4 font-bold text-slate-900">{item.type === 'Raw Material' ? item.material_name : item.product_name}</td>
+                              <td className="px-6 py-4">
+                                <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${item.type === 'Raw Material' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                  {item.type}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 font-mono text-xs">{item.batch_code || item.lpn_code || '-'}</td>
+                              <td className="px-6 py-4 text-xs font-medium text-slate-500">{exactLoc ? (exactLoc.full_code || exactLoc.full_path) : 'Unknown'}</td>
+                              <td className="px-6 py-4 text-right">
+                                <span className="font-black text-slate-900">{parseFloat(item.quantity).toLocaleString()}</span>
+                                <span className="text-xs font-bold text-slate-400 ml-1 uppercase">{item.unit}</span>
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
         </main>

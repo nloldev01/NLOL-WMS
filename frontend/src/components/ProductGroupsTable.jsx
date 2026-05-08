@@ -66,7 +66,7 @@ export default function ProductGroupsTable() {
 
   // ── Submit (Create / Update) ──────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!form.name.trim()) return setError('Product Group name is required.')
+    if (!form.name.trim()) return setError('Data Group name is required.')
 
     setSubmitting(true)
     setError('')
@@ -106,7 +106,7 @@ export default function ProductGroupsTable() {
 
         {/* Table Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">Product Groups</h2>
+          <h2 className="text-base font-semibold text-gray-900">Data Groups</h2>
           <div className="flex items-center gap-3">
             <button
               onClick={openAdd}
@@ -115,7 +115,7 @@ export default function ProductGroupsTable() {
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add Product Group
+              Add Data Group
             </button>
             <div className="relative">
               <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -146,7 +146,7 @@ export default function ProductGroupsTable() {
             <tbody className="divide-y divide-gray-50">
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="px-6 py-10 text-center text-gray-400">No product groups found</td>
+                  <td colSpan={3} className="px-6 py-10 text-center text-gray-400">No data groups found</td>
                 </tr>
               ) : paginated.map((group, idx) => (
                 <tr key={group.id} className="hover:bg-gray-50 transition-colors">
@@ -201,7 +201,7 @@ export default function ProductGroupsTable() {
 
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">
-                {editGroup ? 'Edit Product Group' : 'Add New Product Group'}
+                {editGroup ? 'Edit Data Group' : 'Add New Data Group'}
               </h3>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
@@ -211,7 +211,7 @@ export default function ProductGroupsTable() {
                 <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</div>
               )}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Product Group Name *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Data Group Name *</label>
                 <input
                   name="name"
                   value={form.name}

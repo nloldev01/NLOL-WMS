@@ -682,8 +682,8 @@ const ProductMovementPage = () => {
                               </div>
                             ) : (
                               <div className="flex flex-col gap-0.5">
-                                <span className={`text-[9px] font-bold ${['usage', 'wastage', 'adjustment_out'].includes(log.movement_type) ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                  {['usage', 'wastage', 'adjustment_out'].includes(log.movement_type) ? 'OUT (SOURCE)' : 'IN (DESTINATION)'}
+                                <span className={`text-[9px] font-bold ${['sale', 'purchase_return', 'wastage', 'adjustment'].includes(log.movement_type) ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                  {['sale', 'purchase_return', 'wastage', 'adjustment'].includes(log.movement_type) ? 'OUT (SOURCE)' : 'IN (DESTINATION)'}
                                 </span>
                                 <span className="font-medium text-slate-700 uppercase tracking-tight">{log.location_name}</span>
                               </div>

@@ -207,7 +207,7 @@ const ProductPage = () => {
     if (!editProduct) {
       if (!form.data_group_id)      return (setError('Data group is required.'),     setSubmitting(false))
       if (!form.sub_group_id)       return (setError('Sub group is required.'),      setSubmitting(false))
-      if (!form.product_segment_id) return (setError('Product segment is required.'),setSubmitting(false))
+      if (!form.product_segment_id) return (setError('Segment is required.'),setSubmitting(false))
       if (!form.unit_id)            return (setError('Unit is required.'),           setSubmitting(false))
     }
 
@@ -532,10 +532,10 @@ const ProductPage = () => {
                 </div>
               </div>
 
-              {/* Product Segment / Unit */}
+              {/* Segment / Unit */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Product Segment *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Segment *</label>
                   <select
                     name="product_segment_id"
                     value={form.product_segment_id}

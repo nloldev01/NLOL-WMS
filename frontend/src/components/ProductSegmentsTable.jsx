@@ -109,7 +109,7 @@ export default function ProductSegmentsTable() {
 
         {/* Table Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">Product Segments</h2>
+          <h2 className="text-base font-semibold text-gray-900">Segments</h2>
           <div className="flex items-center gap-3">
             <button
               onClick={openAdd}
@@ -149,7 +149,7 @@ export default function ProductSegmentsTable() {
             <tbody className="divide-y divide-gray-50">
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-gray-400">No product segments found</td>
+                  <td colSpan={4} className="px-6 py-10 text-center text-gray-400">No segments found</td>
                 </tr>
               ) : paginated.map((segment, idx) => (
                 <tr key={segment.id} className="hover:bg-gray-50 transition-colors">
@@ -204,7 +204,7 @@ export default function ProductSegmentsTable() {
 
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">
-                {editSegment ? 'Edit Product Segment' : 'Add New Product Segment'}
+                {editSegment ? 'Edit Segment' : 'Add New Segment'}
               </h3>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>

@@ -229,7 +229,7 @@ const ProductStockPage = () => {
                   <tr>
                     <th className="px-6 py-3 w-10">No</th>
                     <th className="px-6 py-3">Product</th>
-                    <th className="px-6 py-3">Batch No</th>
+                    <th className="px-6 py-3">Batch / LPN</th>
                     <th className="px-6 py-3">Location</th>
                     <th className="px-6 py-3">Quantity</th>
                     <th className="px-6 py-3">Unit</th>
@@ -246,7 +246,18 @@ const ProductStockPage = () => {
                     <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                       <td className="px-6 py-3 font-medium text-gray-900">{stock.product_name}</td>
-                      <td className="px-6 py-3 font-mono text-xs text-orange-600 font-bold">{stock.batch_code || '—'}</td>
+                      <td className="px-6 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-orange-600 bg-orange-50 font-bold border border-orange-100 inline-block w-fit">
+                            {stock.batch_code || '—'}
+                          </span>
+                          {stock.lpn_code && (
+                            <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-indigo-600 bg-indigo-50 font-bold border border-indigo-100 inline-block w-fit">
+                              {stock.lpn_code}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-3 text-gray-500">{stock.location_name}</td>
                       <td className="px-6 py-3">
                         <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${getStockBadge(stock.quantity)}`}>
@@ -261,10 +272,10 @@ const ProductStockPage = () => {
                       <td className="px-6 py-3 text-gray-400 text-xs">
                         {stock.updated_at ? new Date(stock.updated_at).toLocaleDateString() : '—'}
                       </td>
-                      <td className="px-6 py-3">
+                      <td className="px-6 py-3 whitespace-nowrap">
                         <a
                           href={`/stock/product-logs?product=${stock.product}&batch=${stock.batch}`}
-                          className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600"
+                          className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 inline-block text-center"
                         >
                           View Log
                         </a>

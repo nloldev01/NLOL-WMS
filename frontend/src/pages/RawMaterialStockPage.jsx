@@ -6,14 +6,14 @@ import { apiFetch } from '../utils/api'
 const PAGE_SIZE = 10
 
 const RawMaterialStockPage = () => {
-  const [stocks, setStocks]       = useState([])
+  const [stocks, setStocks] = useState([])
   const [materials, setMaterials] = useState([])
   const [locations, setLocations] = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
-  const [page, setPage]           = useState(1)
-  const [error, setError]         = useState('')
-  const [filters, setFilters]     = useState({ material__type: '', location: '' })
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [error, setError] = useState('')
+  const [filters, setFilters] = useState({ material__type: '', location: '' })
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
 
@@ -42,7 +42,7 @@ const RawMaterialStockPage = () => {
       if (search) params.append('search', search)
       if (filters.material__type) params.append('material__type', filters.material__type)
       if (filters.location) params.append('location', filters.location)
-      
+
       const res = await apiFetch(`/raw-materials-stock/stock/?${params.toString()}`)
       if (res && res.ok) {
         const data = await res.json()
@@ -84,12 +84,12 @@ const RawMaterialStockPage = () => {
 
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   // Badge color based on quantity
   const getStockBadge = (qty) => {
-    if (qty <= 0)  return 'bg-red-50 text-red-600'
-    if (qty < 50)  return 'bg-yellow-50 text-yellow-600'
+    if (qty <= 0) return 'bg-red-50 text-red-600'
+    if (qty < 50) return 'bg-yellow-50 text-yellow-600'
     return 'bg-green-50 text-green-600'
   }
 
@@ -139,11 +139,10 @@ const RawMaterialStockPage = () => {
                 <div className="relative" ref={filterRef}>
                   <button
                     onClick={() => setFilterOpen(o => !o)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                      activeFilterCount > 0
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${activeFilterCount > 0
                         ? 'border-orange-400 bg-orange-50 text-orange-600'
                         : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
@@ -213,7 +212,7 @@ const RawMaterialStockPage = () => {
                     <th className="px-6 py-3">Material</th>
                     <th className="px-6 py-3">Type</th>
                     <th className="px-6 py-3">Location</th>
-                    <th className="px-6 py-3">Batch No</th>
+                    <th className="px-6 py-3">Batch / LPN</th>
                     <th className="px-6 py-3">Quantity</th>
                     <th className="px-6 py-3">Unit</th>
                     <th className="px-6 py-3">Last Updated</th>
@@ -230,16 +229,26 @@ const RawMaterialStockPage = () => {
                       <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                       <td className="px-6 py-3 font-medium text-gray-900">{stock.material_name}</td>
                       <td className="px-6 py-3">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${
-                          stock.material_type === 'Raw Material'
+                        <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${stock.material_type === 'Raw Material'
                             ? 'bg-blue-50 text-blue-600'
                             : 'bg-purple-50 text-purple-600'
-                        }`}>
+                          }`}>
                           {stock.material_type}
                         </span>
                       </td>
                       <td className="px-6 py-3 text-gray-500">{stock.location_name}</td>
-                      <td className="px-6 py-3 text-gray-500">{stock.batch_code || '—'}</td>
+                      <td className="px-6 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-orange-600 bg-orange-50 font-bold border border-orange-100 inline-block w-fit">
+                            {stock.batch_code || '—'}
+                          </span>
+                          {stock.lpn_code && (
+                            <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-indigo-600 bg-indigo-50 font-bold border border-indigo-100 inline-block w-fit">
+                              {stock.lpn_code}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-3">
                         <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${getStockBadge(stock.quantity)}`}>
                           {parseFloat(stock.quantity).toLocaleString()}
@@ -253,10 +262,10 @@ const RawMaterialStockPage = () => {
                       <td className="px-6 py-3 text-gray-400 text-xs">
                         {stock.updated_at ? new Date(stock.updated_at).toLocaleDateString() : '—'}
                       </td>
-                      <td className="px-6 py-3">
+                      <td className="px-6 py-3 whitespace-nowrap">
                         <a
-                          href={`/stock/raw-materials-logs?material=${stock.material}&location=${stock.location}`}
-                          className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600"
+                          href={`/stock/product-logs?product=${stock.product}&batch=${stock.batch}`}
+                          className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 inline-block text-center"
                         >
                           View Log
                         </a>
@@ -282,9 +291,8 @@ const RawMaterialStockPage = () => {
                   <button
                     key={p}
                     onClick={() => setPage(p)}
-                    className={`w-7 h-7 rounded text-xs font-medium ${
-                      page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
-                    }`}
+                    className={`w-7 h-7 rounded text-xs font-medium ${page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
+                      }`}
                   >{p}</button>
                 ))}
                 <button

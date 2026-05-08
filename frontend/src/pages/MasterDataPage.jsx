@@ -17,9 +17,9 @@ const MASTER_ITEMS = [
   { key: 'assets', label: 'Assets', color: '#f43f5e' },
   { key: 'locations', label: 'Locations', color: '#3b82f6' },
   { key: 'raw-materials', label: 'Raw Materials and Consumables', color: '#f59e0b' },
-  { key: 'product-groups', label: 'Product Groups', color: '#22c55e' },
-  { key: 'product-sub-groups', label: 'Product Sub-Groups', color: '#8b5cf6' },
-  { key: 'product-segments', label: 'Product Segments', color: '#ec4899' },
+  { key: 'product-groups', label: 'Data Groups', color: '#22c55e' },
+  { key: 'product-sub-groups', label: 'Sub Groups', color: '#8b5cf6' },
+  { key: 'product-segments', label: 'Segments', color: '#ec4899' },
   { key: 'suppliers', label: 'Suppliers', color: '#ec4899' },
 
   // { key: 'roles',        label: 'Roles',        color: '#3b82f6' },

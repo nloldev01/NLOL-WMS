@@ -12,6 +12,7 @@ import ProductMovementPage from './pages/ProductMovementPage';
 import BatchesPage from './pages/BatchesPage';
 import InventoryExplorerPage from './pages/InventoryExplorerPage';
 import LPNFinderPage from './pages/LPNFinderPage';
+import ProductRecipePage from './pages/ProductRecipePage';
 
 export const BASE_URL = 'http://localhost:8000/api';
 
@@ -33,6 +34,7 @@ function App() {
         <Route path="/stock/batches" element={<BatchesPage />} />
         <Route path="/stock/inventory-explorer" element={<InventoryExplorerPage />} />
         <Route path="/stock/lpn-finder" element={<LPNFinderPage />} />
+        <Route path="/production/recipes" element={<ProductRecipePage />} />
 
         {/* Error Pages */}
         <Route path="/403" element={<ErrorPage type="403" />} />

@@ -14,7 +14,9 @@ import {
   ExclamationTriangleIcon,
   CreditCardIcon,
   MapIcon,
-  FingerPrintIcon
+  FingerPrintIcon,
+  BeakerIcon,
+  WrenchScrewdriverIcon
 } from '@heroicons/react/24/outline'
 
 const Sidebar = () => {
@@ -34,6 +36,7 @@ const Sidebar = () => {
     'counter-sales': CreditCardIcon,
     // 'inventory-explorer': MapIcon,
     'stock-identity': FingerPrintIcon,
+    production: WrenchScrewdriverIcon,
   }
 
   const menuData = [
@@ -80,6 +83,13 @@ const Sidebar = () => {
       children: [
         { id: 'user-list', label: 'User List', path: '/users' },
         { id: 'user-roles', label: 'Roles & Permissions', path: '/users/roles' },
+      ],
+    },
+    {
+      id: 'production',
+      label: 'Production',
+      children: [
+        { id: 'recipes', label: 'Product Recipes', path: '/production/recipes' },
       ],
     },
     { id: 'machines', label: 'Machines', path: '/machines' },
