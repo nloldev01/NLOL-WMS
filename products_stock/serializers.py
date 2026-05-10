@@ -10,12 +10,19 @@ class ProductStockSerializer(serializers.ModelSerializer):
     batch_code = serializers.ReadOnlyField(source='batch.batch_code')
     lpn_code = serializers.ReadOnlyField(source='lpn.lpn_code')
     unit = serializers.ReadOnlyField(source='product.unit.symbol')
+    secondary_unit = serializers.ReadOnlyField(source='product.secondary_unit.symbol')
+    secondary_quantity = serializers.SerializerMethodField()
+
+    def get_secondary_quantity(self, obj):
+        if obj.product.capacity_value:
+            return round(obj.quantity * obj.product.capacity_value, 4)
+        return None
 
     class Meta:
         model = ProductStock
         fields = [
             'id', 'product', 'product_name', 'batch', 'batch_code', 'lpn', 'lpn_code',
-            'location', 'location_name', 'quantity', 'unit', 'updated_at'
+            'location', 'location_name', 'quantity', 'unit', 'secondary_quantity', 'secondary_unit', 'updated_at'
         ]
 
 class ProductStockLogSerializer(serializers.ModelSerializer):
@@ -25,14 +32,27 @@ class ProductStockLogSerializer(serializers.ModelSerializer):
     batch_code = serializers.ReadOnlyField(source='batch.batch_code')
     lpn_code = serializers.ReadOnlyField(source='lpn.lpn_code')
     unit = serializers.ReadOnlyField(source='product.unit.symbol')
+    secondary_unit = serializers.ReadOnlyField(source='product.secondary_unit.symbol')
     performer_name = serializers.ReadOnlyField(source='performed_by.username')
+    secondary_quantity = serializers.SerializerMethodField()
+    secondary_balance_after = serializers.SerializerMethodField()
+
+    def get_secondary_quantity(self, obj):
+        if obj.product.capacity_value:
+            return round(obj.quantity * obj.product.capacity_value, 4)
+        return None
+
+    def get_secondary_balance_after(self, obj):
+        if obj.product.capacity_value:
+            return round(obj.balance_after * obj.product.capacity_value, 4)
+        return None
 
     class Meta:
         model = ProductStockLog
         fields = [
             'id', 'product', 'product_name', 'batch', 'batch_code', 'lpn', 'lpn_code',
-            'location', 'location_name', 'movement_type', 'quantity',
-            'balance_after', 'unit', 'reference', 'notes',
+            'location', 'location_name', 'movement_type', 'quantity', 'secondary_quantity',
+            'balance_after', 'secondary_balance_after', 'unit', 'secondary_unit', 'reference', 'notes',
             'supplier',
             'counterpart_location', 'counterpart_location_name',
             'performer_name', 'created_at'

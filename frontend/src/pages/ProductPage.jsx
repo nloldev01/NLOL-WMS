@@ -12,6 +12,8 @@ const emptyForm = {
   sub_group_id: '',
   product_segment_id: '',
   unit_id: '',
+  secondary_unit_id: '',
+  capacity_value: '',
   is_available: true,
 }
 
@@ -166,6 +168,8 @@ const ProductPage = () => {
       sub_group_id: product.product_sub_group || '',
       product_segment_id: product.product_segment || '',
       unit_id: product.unit || '',
+      secondary_unit_id: product.secondary_unit || '',
+      capacity_value: product.capacity_value || '',
       is_available: product.is_available ?? true,
     })
     setError('')
@@ -202,6 +206,8 @@ const ProductPage = () => {
     if (form.sub_group_id)        payload.product_sub_group = parseInt(form.sub_group_id)
     if (form.product_segment_id)  payload.product_segment   = parseInt(form.product_segment_id)
     if (form.unit_id)             payload.unit              = parseInt(form.unit_id)
+    if (form.secondary_unit_id)   payload.secondary_unit    = parseInt(form.secondary_unit_id)
+    if (form.capacity_value)      payload.capacity_value    = form.capacity_value
 
     // On create, all FK fields are required
     if (!editProduct) {
@@ -375,6 +381,7 @@ const ProductPage = () => {
                     <th className="px-6 py-3">Sub Group</th>
                     <th className="px-6 py-3">Segment</th>
                     <th className="px-6 py-3">Unit</th>
+                    <th className="px-6 py-3">Capacity</th>
                     <th className="px-6 py-3">Available</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
@@ -397,6 +404,11 @@ const ProductPage = () => {
                           <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-600 text-xs font-medium">
                             {product.unit_symbol}
                           </span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-6 py-3 text-gray-500">
+                        {product.capacity_value && product.secondary_unit_symbol ? (
+                            `${parseFloat(product.capacity_value)} ${product.secondary_unit_symbol}`
                         ) : '—'}
                       </td>
                       <td className="px-6 py-3">
@@ -555,6 +567,34 @@ const ProductPage = () => {
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
                   >
                     <option value="">Select unit</option>
+                    {units.map(u => <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Capacity / Secondary Unit */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Capacity Value</label>
+                  <input
+                    name="capacity_value"
+                    type="number"
+                    step="0.01"
+                    value={form.capacity_value}
+                    onChange={handleChange}
+                    placeholder="e.g. 0.75"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Secondary Unit</label>
+                  <select
+                    name="secondary_unit_id"
+                    value={form.secondary_unit_id}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  >
+                    <option value="">Select secondary unit</option>
                     {units.map(u => <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>)}
                   </select>
                 </div>

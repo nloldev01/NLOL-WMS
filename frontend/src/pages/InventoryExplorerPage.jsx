@@ -91,11 +91,13 @@ const InventoryExplorerPage = () => {
         grouped[key] = {
           ...item,
           quantity: parseFloat(item.quantity),
+          secondary_quantity: parseFloat(item.secondary_quantity || 0),
           locations: [item.location],
           batchLabels: new Set([batchLabel])
         };
       } else {
         grouped[key].quantity += parseFloat(item.quantity);
+        grouped[key].secondary_quantity += parseFloat(item.secondary_quantity || 0);
         grouped[key].locations.push(item.location);
         grouped[key].batchLabels.add(batchLabel);
       }
@@ -103,6 +105,7 @@ const InventoryExplorerPage = () => {
     return Object.values(grouped).map(item => ({
       ...item,
       quantity: item.quantity.toString(),
+      secondary_quantity: item.secondary_quantity.toString(),
       batchLabel: item.batchLabels.size === 1 ? [...item.batchLabels][0] : 'MULTIPLE BATCHES'
     }));
   }
@@ -216,9 +219,13 @@ const InventoryExplorerPage = () => {
                                </div>
                                <div className="text-right">
                                  <p className={`text-[11px] font-black ${item.type === 'raw' ? 'text-blue-600' : 'text-orange-600'}`}>
-                                   {parseFloat(item.quantity).toLocaleString()}
+                                   {parseFloat(item.quantity).toLocaleString()} <span className="text-[8px] font-bold text-slate-400 uppercase leading-none">{item.unit}</span>
                                  </p>
-                                 <p className="text-[8px] font-bold text-slate-400 uppercase leading-none">{item.unit}</p>
+                                 {parseFloat(item.secondary_quantity) > 0 && item.secondary_unit && (
+                                   <p className="text-[10px] font-bold text-indigo-500">
+                                     {parseFloat(item.secondary_quantity).toLocaleString()} <span className="text-[8px] uppercase">{item.secondary_unit}</span>
+                                   </p>
+                                 )}
                                </div>
                             </div>
                           </div>
@@ -318,6 +325,11 @@ const InventoryExplorerPage = () => {
                               <td className="px-6 py-4 text-right">
                                 <span className="font-black text-slate-900">{parseFloat(item.quantity).toLocaleString()}</span>
                                 <span className="text-xs font-bold text-slate-400 ml-1 uppercase">{item.unit}</span>
+                                {item.secondary_quantity && item.secondary_unit && (
+                                    <div className="text-[10px] font-bold text-indigo-500 mt-0.5">
+                                      {parseFloat(item.secondary_quantity).toLocaleString()} {item.secondary_unit}
+                                    </div>
+                                )}
                               </td>
                             </tr>
                           );

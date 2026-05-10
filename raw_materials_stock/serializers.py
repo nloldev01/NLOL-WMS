@@ -20,6 +20,13 @@ class RawMaterialStockSerializer(serializers.ModelSerializer):
     batch         = serializers.PrimaryKeyRelatedField(queryset=Batch.objects.all(), required=False, allow_null=True)
     batch_code    = serializers.CharField(source='batch.batch_code', read_only=True)
     lpn_code      = serializers.CharField(source='lpn.lpn_code', read_only=True)
+    secondary_unit = serializers.CharField(source='material.secondary_unit.symbol', read_only=True)
+    secondary_quantity = serializers.SerializerMethodField()
+
+    def get_secondary_quantity(self, obj):
+        if obj.material.capacity_value:
+            return round(obj.quantity * obj.material.capacity_value, 4)
+        return None
     
     # FIX: Add explicit location field to handle ID-to-object conversion
     location = serializers.PrimaryKeyRelatedField(
@@ -33,7 +40,7 @@ class RawMaterialStockSerializer(serializers.ModelSerializer):
             'material', 'material_name', 'material_type',
             'location', 'location_name',
             'batch', 'batch_code', 'lpn', 'lpn_code',
-            'quantity', 'unit',
+            'quantity', 'unit', 'secondary_quantity', 'secondary_unit',
             'updated_at',
         ]
         read_only_fields = ['quantity', 'updated_at']
@@ -41,8 +48,22 @@ class RawMaterialStockSerializer(serializers.ModelSerializer):
 
 class RawMaterialStockLogSerializer(serializers.ModelSerializer):
     material_name = serializers.CharField(source='material.name', read_only=True)
-    unit = serializers.CharField(source='material.unit', read_only=True)
+    unit = serializers.CharField(source='material.unit.symbol', read_only=True)
+    secondary_unit = serializers.CharField(source='material.secondary_unit.symbol', read_only=True)
     location_name = serializers.CharField(source='location.get_full_path', read_only=True)
+
+    secondary_quantity = serializers.SerializerMethodField()
+    secondary_balance_after = serializers.SerializerMethodField()
+
+    def get_secondary_quantity(self, obj):
+        if obj.material.capacity_value:
+            return round(obj.quantity * obj.material.capacity_value, 4)
+        return None
+
+    def get_secondary_balance_after(self, obj):
+        if obj.material.capacity_value:
+            return round(obj.balance_after * obj.material.capacity_value, 4)
+        return None
 
     counterpart_location_name = serializers.CharField(
         source='counterpart_location.get_full_path',
@@ -71,11 +92,11 @@ class RawMaterialStockLogSerializer(serializers.ModelSerializer):
         model = RawMaterialStockLog
         fields = [
             'id',
-            'material', 'material_name', 'unit',
+            'material', 'material_name', 'unit', 'secondary_unit',
             'location', 'location_name',
             'counterpart_location', 'counterpart_location_name',
             'movement_type', 'movement_type_display',
-            'quantity', 'balance_after',
+            'quantity', 'secondary_quantity', 'balance_after', 'secondary_balance_after',
             'batch', 'batch_code', 'lpn', 'lpn_code',
             'supplier',
             'reference', 'notes',

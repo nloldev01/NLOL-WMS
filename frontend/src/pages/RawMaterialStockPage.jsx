@@ -214,7 +214,7 @@ const RawMaterialStockPage = () => {
                     <th className="px-6 py-3">Location</th>
                     <th className="px-6 py-3">Batch / LPN</th>
                     <th className="px-6 py-3">Quantity</th>
-                    <th className="px-6 py-3">Unit</th>
+                    <th className="px-6 py-3">Capacity</th>
                     <th className="px-6 py-3">Last Updated</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
@@ -251,13 +251,15 @@ const RawMaterialStockPage = () => {
                       </td>
                       <td className="px-6 py-3">
                         <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${getStockBadge(stock.quantity)}`}>
-                          {parseFloat(stock.quantity).toLocaleString()}
+                          {parseFloat(stock.quantity).toLocaleString()} {stock.unit || ''}
                         </span>
                       </td>
                       <td className="px-6 py-3">
-                        <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-600 text-xs font-medium">
-                          {stock.unit || '—'}
-                        </span>
+                        {stock.secondary_quantity && stock.secondary_unit ? (
+                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-xs font-medium">
+                            {parseFloat(stock.secondary_quantity).toLocaleString()} {stock.secondary_unit}
+                          </span>
+                        ) : '—'}
                       </td>
                       <td className="px-6 py-3 text-gray-400 text-xs">
                         {stock.updated_at ? new Date(stock.updated_at).toLocaleDateString() : '—'}

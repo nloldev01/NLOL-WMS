@@ -145,6 +145,14 @@ class RawMaterialAndConsumable(models.Model):
         on_delete=models.SET_NULL,
         related_name='raw_materials_and_consumables'
     )
+    secondary_unit = models.ForeignKey(
+        'Unit',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='secondary_raw_materials'
+    )
+    capacity_value = models.DecimalField(max_digits=10, decimal_places=4, default=0, null=True, blank=True)
 
     class Meta:
         db_table = 'master_raw_materials_and_consumables'
@@ -236,6 +244,14 @@ class Product(models.Model):
         on_delete=models.PROTECT,
         related_name='products'
     )
+    secondary_unit = models.ForeignKey(
+        'Unit',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='secondary_products'
+    )
+    capacity_value = models.DecimalField(max_digits=10, decimal_places=4, default=0, null=True, blank=True)
 
     class Meta:
         db_table = 'products'

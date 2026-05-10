@@ -73,11 +73,13 @@ class LocationSerializer(serializers.ModelSerializer):
 class RawMaterialAndConsumableSerializer(serializers.ModelSerializer):
     unit_name = serializers.CharField(source='unit.name', read_only=True)
     unit_symbol = serializers.CharField(source='unit.symbol', read_only=True)
+    secondary_unit_name = serializers.CharField(source='secondary_unit.name', read_only=True)
+    secondary_unit_symbol = serializers.CharField(source='secondary_unit.symbol', read_only=True)
     type_display = serializers.CharField(source='get_type_display', read_only=True)
 
     class Meta:
         model  = RawMaterialAndConsumable
-        fields = ['id', 'name', 'type', 'type_display', 'unit', 'unit_name', 'unit_symbol']
+        fields = ['id', 'name', 'type', 'type_display', 'unit', 'unit_name', 'unit_symbol', 'secondary_unit', 'secondary_unit_name', 'secondary_unit_symbol', 'capacity_value']
         read_only_fields = ['id']
 
     def validate_name(self, value):
@@ -148,6 +150,9 @@ class ProductSerializer(serializers.ModelSerializer):
     product_segment_name = serializers.CharField(source='product_segment.name', read_only=True)
     product_sub_group_name = serializers.CharField(source='product_sub_group.name', read_only=True)
     unit_name = serializers.CharField(source='unit.name', read_only=True)
+    unit_symbol = serializers.CharField(source='unit.symbol', read_only=True)
+    secondary_unit_name = serializers.CharField(source='secondary_unit.name', read_only=True)
+    secondary_unit_symbol = serializers.CharField(source='secondary_unit.symbol', read_only=True)
 
     class Meta:
         model = Product
@@ -156,9 +161,10 @@ class ProductSerializer(serializers.ModelSerializer):
             'product_group', 'product_group_name',
             'product_segment', 'product_segment_name',
             'product_sub_group', 'product_sub_group_name',
-            'unit', 'unit_name'
+            'unit', 'unit_name', 'unit_symbol',
+            'secondary_unit', 'secondary_unit_name', 'secondary_unit_symbol', 'capacity_value'
         ]
-        read_only_fields = ['id', 'product_group_name', 'product_segment_name', 'product_sub_group_name', 'unit_name']
+        read_only_fields = ['id', 'product_group_name', 'product_segment_name', 'product_sub_group_name', 'unit_name', 'unit_symbol', 'secondary_unit_name', 'secondary_unit_symbol']
 
 class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
