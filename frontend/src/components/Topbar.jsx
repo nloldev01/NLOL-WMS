@@ -66,11 +66,18 @@ const Topbar = () => {
                 <p className="text-sm text-gray-500">{role}</p>
               </div>
               <div className="mt-3 space-y-2">
-                <button className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">Change Password</button>
-                <button className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">Edit Profile</button>
+                <button 
+                  onClick={() => {
+                    setProfileOpen(false)
+                    navigate('/change-password')
+                  }}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  Change Password
+                </button>
                 <button
                   onClick={handleLogout}
-                  className="w-full rounded-md bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+                  className="w-full rounded-md bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors"
                 >
                   Log out
                 </button>

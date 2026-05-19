@@ -13,6 +13,9 @@ import BatchesPage from './pages/BatchesPage';
 import InventoryExplorerPage from './pages/InventoryExplorerPage';
 import LPNFinderPage from './pages/LPNFinderPage';
 import ProductRecipePage from './pages/ProductRecipePage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
+import ProductionDashboardPage from './pages/ProductionDashboardPage';
+import SalesPage from './pages/SalesPage';
 
 export const BASE_URL = 'http://localhost:8000/api';
 
@@ -25,6 +28,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/users" element={<UserPage />} />
+        <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/master-data" element={<MasterDataPage />} />
         <Route path="/products" element={<ProductPage />} />
         <Route path="/stock/raw-materials" element={<RawMaterialStockPage />} />
@@ -34,7 +38,9 @@ function App() {
         <Route path="/stock/batches" element={<BatchesPage />} />
         <Route path="/stock/inventory-explorer" element={<InventoryExplorerPage />} />
         <Route path="/stock/lpn-finder" element={<LPNFinderPage />} />
+        <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
         <Route path="/production/recipes" element={<ProductRecipePage />} />
+        <Route path="/sales" element={<SalesPage />} />
 
         {/* Error Pages */}
         <Route path="/403" element={<ErrorPage type="403" />} />

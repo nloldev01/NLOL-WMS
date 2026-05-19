@@ -42,6 +42,8 @@ class User(AbstractBaseUser):
     status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
     last_login_date = models.DateTimeField(null=True, blank=True)
     ip = models.GenericIPAddressField(null=True, blank=True)
+    otp_base32_secret = models.CharField(max_length=32, null=True, blank=True)
+    is_2fa_enabled = models.BooleanField(default=False)
 
 
     USERNAME_FIELD = 'username'

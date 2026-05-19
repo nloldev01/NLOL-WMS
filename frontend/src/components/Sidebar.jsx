@@ -37,6 +37,7 @@ const Sidebar = () => {
     // 'inventory-explorer': MapIcon,
     'stock-identity': FingerPrintIcon,
     production: WrenchScrewdriverIcon,
+    sales: CreditCardIcon,
   }
 
   const menuData = [
@@ -89,8 +90,14 @@ const Sidebar = () => {
       id: 'production',
       label: 'Production',
       children: [
+        { id: 'production-dashboard', label: 'Dashboard', path: '/production/dashboard' },
         { id: 'recipes', label: 'Product Recipes', path: '/production/recipes' },
       ],
+    },
+    {
+      id: 'sales',
+      label: 'Sales',
+      path: '/sales',
     },
     { id: 'machines', label: 'Machines', path: '/machines' },
     { id: 'purchase-orders', label: 'Purchase Orders', path: '/purchase-orders' },

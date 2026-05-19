@@ -1,3 +1,4 @@
+import logging
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -6,6 +7,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from accounts.models import User, UserRole
 from .serializers import UserSerializer, UserRoleSerializer
+
+auth_logger = logging.getLogger('erp.auth')
 
 
 def is_superadmin(user):
@@ -81,6 +84,11 @@ def logout_view(request):
     try:
         token = RefreshToken(refresh_token)
         token.blacklist()
+        
+        user_name = request.user.username if request.user.is_authenticated else 'Unknown'
+        ip = request.META.get('REMOTE_ADDR', 'Unknown')
+        auth_logger.info(f"Logout successful | User: {user_name} | IP: {ip}")
+
         return Response(
             {'message': 'Logout successful'},
             status=status.HTTP_200_OK
