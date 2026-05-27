@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react'
-import { Html5Qrcode, Html5QrcodeScanner } from 'html5-qrcode'
+import { Html5Qrcode } from 'html5-qrcode'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import { apiFetch } from '../utils/api'
-import { 
+import {
   QrCodeIcon,
-  ClockIcon, 
-  MapPinIcon, 
-  CubeIcon, 
+  ClockIcon,
+  MapPinIcon,
+  CubeIcon,
   ArchiveBoxIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
   MagnifyingGlassIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
+  CameraIcon
 } from '@heroicons/react/24/outline'
 
 const LPNFinderPage = () => {
@@ -27,8 +28,8 @@ const LPNFinderPage = () => {
 
   useEffect(() => {
     return () => {
-      if (scanner) {
-        scanner.clear()
+      if (scanner && scanner.isScanning) {
+        scanner.stop().catch(() => {})
       }
     }
   }, [scanner])
@@ -128,19 +129,23 @@ const LPNFinderPage = () => {
 
   const startScanner = () => {
     setIsScannerOpen(true)
-    setTimeout(() => {
-      const newScanner = new Html5QrcodeScanner("reader", { 
-        fps: 10, 
-        qrbox: {width: 250, height: 250},
-        aspectRatio: 1.0
-      })
-      newScanner.render((decodedText) => {
-        newScanner.clear()
-        handleSearch(decodedText)
-      }, (err) => {
-        // Silently handle scan errors
-      })
-      setScanner(newScanner)
+    setTimeout(async () => {
+      const html5QrCode = new Html5Qrcode("reader")
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          (decodedText) => {
+            html5QrCode.stop().catch(() => {}).finally(() => {
+              handleSearch(decodedText)
+            })
+          }
+        )
+        setScanner(html5QrCode)
+      } catch (err) {
+        setError("Camera access denied or not available.")
+        setIsScannerOpen(false)
+      }
     }, 100)
   }
 
@@ -193,14 +198,20 @@ const LPNFinderPage = () => {
             </div>
 
             <div className="flex flex-wrap justify-center gap-4">
-               <button 
+               <button
                 onClick={startScanner}
-                className="flex items-center gap-3 px-6 py-3 bg-white border-2 border-slate-100 rounded-2xl text-slate-600 font-bold hover:border-orange-200 hover:text-orange-500 transition-all shadow-sm group"
+                className={`flex items-center gap-3 px-6 py-3 border-2 rounded-2xl font-bold transition-all active:scale-95 shadow-sm group ${
+                  isScannerOpen
+                    ? 'bg-orange-500 border-orange-500 text-white shadow-orange-200'
+                    : 'bg-white border-slate-100 text-slate-600 hover:border-orange-200 hover:text-orange-500'
+                }`}
                >
-                  <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center group-hover:bg-orange-50 transition-colors">
-                    <MapPinIcon className="w-5 h-5" />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                    isScannerOpen ? 'bg-white/20' : 'bg-slate-50 group-hover:bg-orange-50'
+                  }`}>
+                    <CameraIcon className="w-5 h-5" />
                   </div>
-                  <span>Camera Scan</span>
+                  <span>{isScannerOpen ? 'Scanning...' : 'Camera Scan'}</span>
                </button>
                
                <label className="flex items-center gap-3 px-6 py-3 bg-white border-2 border-slate-100 rounded-2xl text-slate-600 font-bold hover:border-orange-200 hover:text-orange-500 transition-all shadow-sm group cursor-pointer">
@@ -218,10 +229,13 @@ const LPNFinderPage = () => {
               <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                   <h3 className="font-black text-slate-900 uppercase tracking-widest text-sm">Live QR Scanner</h3>
-                  <button 
+                  <button
                     onClick={() => {
-                      if (scanner) scanner.clear()
-                      setIsScannerOpen(false)
+                      if (scanner && scanner.isScanning) {
+                        scanner.stop().catch(() => {}).finally(() => setIsScannerOpen(false))
+                      } else {
+                        setIsScannerOpen(false)
+                      }
                     }}
                     className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-100 text-slate-400 hover:bg-slate-200 transition-all"
                   >✕</button>

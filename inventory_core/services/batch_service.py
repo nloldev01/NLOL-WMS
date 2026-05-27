@@ -54,3 +54,22 @@ class BatchService:
         counter.last_value += 1
         counter.save()
         return f"{counter.prefix}-{counter.last_value:09d}"
+
+
+class FCCService:
+
+    @staticmethod
+    @transaction.atomic
+    def generate_fcc_code():
+        """
+        Generates a globally unique Factory Container Code.
+        Format: F-000000001
+        """
+        from ..models import FCCCounter
+        counter, _ = FCCCounter.objects.select_for_update().get_or_create(
+            prefix='F',
+            defaults={'last_value': 0}
+        )
+        counter.last_value += 1
+        counter.save()
+        return f"F-{counter.last_value:09d}"

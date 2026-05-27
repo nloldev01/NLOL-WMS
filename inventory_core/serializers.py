@@ -1,37 +1,21 @@
 from rest_framework import serializers
-from .models import Batch
+from .models import Batch, LPN
 
 
 class BatchSerializer(serializers.ModelSerializer):
-    raw_material_name = serializers.CharField(
-        source='raw_material.name',
-        read_only=True
-    )
-
-    product_name = serializers.CharField(
-        source='product.name',
-        read_only=True
-    )
-
+    raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
+    product_name = serializers.CharField(source='product.name', read_only=True)
     lpns = serializers.SerializerMethodField()
-
     current_stock = serializers.SerializerMethodField()
 
     class Meta:
         model = Batch
         fields = [
-            'id',
-            'batch_code',
-            'batch_type',
-            'raw_material',
-            'raw_material_name',
-            'product',
-            'product_name',
-            'supplier',
-            'expiry_date',
-            'created_at',
-            'current_stock',
-            'lpns',
+            'id', 'batch_code', 'batch_type',
+            'raw_material', 'raw_material_name',
+            'product', 'product_name',
+            'supplier', 'expiry_date', 'created_at',
+            'current_stock', 'lpns',
         ]
         read_only_fields = ['batch_code', 'created_at']
 
@@ -54,9 +38,9 @@ class LPNSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='batch.product.name', read_only=True)
 
     class Meta:
-        from .models import LPN
         model = LPN
         fields = [
-            'id', 'lpn_code', 'batch', 'batch_code', 'batch_type', 
-            'material_name', 'product_name', 'created_at', 'is_active'
+            'id', 'lpn_code', 'batch', 'batch_code', 'batch_type',
+            'material_name', 'product_name', 'created_at', 'is_active',
         ]
+

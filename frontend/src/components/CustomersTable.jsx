@@ -11,7 +11,7 @@ const EMPTY_FORM = {
   is_active: true,
 };
 
-export default function CustomersTable() {
+export default function CustomersTable({ onBulkUpload }) {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -162,6 +162,10 @@ export default function CustomersTable() {
   };
 
   const bulkUploadCustomers = () => {
+    if (onBulkUpload) {
+      onBulkUpload();
+      return;
+    }
     setError('Bulk upload is not available yet.');
   };
 

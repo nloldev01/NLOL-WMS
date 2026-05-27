@@ -1,126 +1,110 @@
-import { useState, useRef, useCallback } from 'react';
-import Topbar from '../components/Topbar';
-import Sidebar from '../components/Sidebar';
-import CustomersTable from '../components/CustomersTable';
-import SalesBillsTable from '../components/SalesBillsTable';
-import SalesDashboard from '../components/SalesDashboard';
-import { apiFetch } from '../utils/api';
+import { useCallback, useRef, useState } from 'react'
 
-const SALES_SECTIONS = [
-  { key: 'dashboard', label: 'Sales Dashboard', color: '#f59e0b' },
-  { key: 'customers', label: 'Customers', color: '#3b82f6' },
-  { key: 'sales-bills', label: 'Sales Bills', color: '#10b981' },
-];
+const SalesBulkUploadModal = ({ onClose, onUploadSuccess }) => {
+  const [dragActive, setDragActive] = useState(false)
+  const [file, setFile] = useState(null)
+  const [status, setStatus] = useState('idle')
+  const [preview, setPreview] = useState(null)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [uploadResult, setUploadResult] = useState(null)
+  const inputRef = useRef(null)
 
-/* ─── Bulk Upload Modal ─────────────────────────────────────────── */
-const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
-  const [dragActive, setDragActive] = useState(false);
-  const [file, setFile] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle | parsing | ready | uploading | done | error
-  const [preview, setPreview] = useState(null); // { headers, rows, total }
-  const [errorMsg, setErrorMsg] = useState('');
-  const [uploadResult, setUploadResult] = useState(null);
-  const inputRef = useRef(null);
+  const REQUIRED_HEADERS = ['customer_code', 'customer_name']
 
-  const REQUIRED_HEADERS = ['customer_code', 'customer_name'];
-
-  /* Parse CSV locally for preview only */
   const parseCSV = (text) => {
-    const lines = text.trim().split('\n').filter(Boolean);
-    if (lines.length < 2) throw new Error('File must have a header row and at least one data row.');
-    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''));
-    const missing = REQUIRED_HEADERS.filter((r) => !headers.includes(r));
-    if (missing.length) throw new Error(`Missing required columns: ${missing.join(', ')}`);
+    const lines = text.trim().split('\n').filter(Boolean)
+    if (lines.length < 2) throw new Error('File must have a header row and at least one data row.')
+    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/"/g, ''))
+    const missing = REQUIRED_HEADERS.filter((r) => !headers.includes(r))
+    if (missing.length) throw new Error(`Missing required columns: ${missing.join(', ')}`)
     const rows = lines.slice(1, 6).map((line) =>
       line.split(',').map((c) => c.trim().replace(/"/g, ''))
-    );
-    return { headers, rows, total: lines.length - 1 };
-  };
+    )
+    return { headers, rows, total: lines.length - 1 }
+  }
 
   const handleFile = useCallback((f) => {
-    if (!f) return;
-    const ext = f.name.split('.').pop().toLowerCase();
+    if (!f) return
+    const ext = f.name.split('.').pop().toLowerCase()
     if (ext !== 'csv') {
-      setErrorMsg('Only CSV files are supported.');
-      setStatus('error');
-      return;
+      setErrorMsg('Only CSV files are supported.')
+      setStatus('error')
+      return
     }
-    setFile(f);
-    setStatus('parsing');
-    setErrorMsg('');
-    setPreview(null);
-    setUploadResult(null);
 
-    const reader = new FileReader();
+    setFile(f)
+    setStatus('parsing')
+    setErrorMsg('')
+    setPreview(null)
+    setUploadResult(null)
+
+    const reader = new FileReader()
     reader.onload = (e) => {
       try {
-        setPreview(parseCSV(e.target.result));
-        setStatus('ready');
+        setPreview(parseCSV(e.target.result))
+        setStatus('ready')
       } catch (err) {
-        setErrorMsg(err.message);
-        setStatus('error');
+        setErrorMsg(err.message)
+        setStatus('error')
       }
-    };
-    reader.onerror = () => { setErrorMsg('Failed to read the file.'); setStatus('error'); };
-    reader.readAsText(f);
-  }, []);
+    }
+    reader.onerror = () => { setErrorMsg('Failed to read the file.') ; setStatus('error') }
+    reader.readAsText(f)
+  }, [])
 
   const onDrop = (e) => {
-    e.preventDefault();
-    setDragActive(false);
-    handleFile(e.dataTransfer.files[0]);
-  };
+    e.preventDefault()
+    setDragActive(false)
+    handleFile(e.dataTransfer.files[0])
+  }
 
-  /* POST to backend */
   const handleConfirm = async () => {
-    if (!file) return;
-    setStatus('uploading');
+    if (!file) return
+    setStatus('uploading')
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const formData = new FormData()
+      formData.append('file', file)
 
-      const token = localStorage.getItem('access') || sessionStorage.getItem('access');
+      const token = localStorage.getItem('access') || sessionStorage.getItem('access')
       const response = await fetch('http://localhost:8000/api/sales/customers/bulk-upload/', {
         method: 'POST',
         body: formData,
         headers: {
-          ...(token && { 'Authorization': `Bearer ${token}` }),
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
-      });
+      })
 
-      const data = await response.json();
+      const data = await response.json()
 
       if (!response.ok && response.status !== 207) {
-        setErrorMsg(data.detail || 'Upload failed. Please try again.');
-        setStatus('error');
-        return;
+        setErrorMsg(data.detail || 'Upload failed. Please try again.')
+        setStatus('error')
+        return
       }
 
-      setUploadResult(data);
-      setStatus('done');
-      if (onUploadSuccess) onUploadSuccess(data);
+      setUploadResult(data)
+      setStatus('done')
+      if (onUploadSuccess) onUploadSuccess(data)
     } catch {
-      setErrorMsg('Network error. Please check your connection and try again.');
-      setStatus('error');
+      setErrorMsg('Network error. Please check your connection and try again.')
+      setStatus('error')
     }
-  };
+  }
 
   const reset = () => {
-    setFile(null);
-    setStatus('idle');
-    setPreview(null);
-    setErrorMsg('');
-    setUploadResult(null);
-  };
+    setFile(null)
+    setStatus('idle')
+    setPreview(null)
+    setErrorMsg('')
+    setUploadResult(null)
+  }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="relative w-full max-w-2xl mx-4 bg-white rounded-xl shadow-xl overflow-hidden">
-
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-white">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
@@ -143,10 +127,7 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-
-          {/* Template hint */}
           <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-blue-50 border border-blue-200">
             <span className="text-xs text-blue-700 flex items-center gap-2">
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -163,11 +144,10 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
             </a>
           </div>
 
-          {/* Drop zone */}
           {(status === 'idle' || status === 'error') && (
             <div
               onDrop={onDrop}
-              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true) }}
               onDragLeave={() => setDragActive(false)}
               onClick={() => inputRef.current?.click()}
               className={`relative flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed cursor-pointer transition-all py-12
@@ -179,7 +159,6 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
                 }`}
             >
               <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
-
               {status === 'error' ? (
                 <>
                   <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
@@ -208,7 +187,6 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
             </div>
           )}
 
-          {/* Parsing / uploading spinner */}
           {(status === 'parsing' || status === 'uploading') && (
             <div className="flex flex-col items-center justify-center gap-3 py-12">
               <div className="w-10 h-10 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
@@ -216,7 +194,6 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
             </div>
           )}
 
-          {/* Preview — ready to confirm */}
           {status === 'ready' && preview && (
             <div className="space-y-3">
               <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-green-200 bg-green-50">
@@ -261,17 +238,16 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
                       </tbody>
                     </table>
                   </div>
+                  {preview.total > 5 && (
+                    <p className="text-xs text-gray-500 mt-2 text-right">
+                      + {preview.total - 5} more row{preview.total - 5 !== 1 ? 's' : ''} not shown
+                    </p>
+                  )}
                 </div>
-                {preview.total > 5 && (
-                  <p className="text-xs text-gray-500 mt-2 text-right">
-                    + {preview.total - 5} more row{preview.total - 5 !== 1 ? 's' : ''} not shown
-                  </p>
-                )}
               </div>
             </div>
           )}
 
-          {/* Upload result */}
           {status === 'done' && uploadResult && (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
@@ -308,7 +284,6 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
           {status === 'done' ? (
             <button
@@ -341,62 +316,7 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-/* ─── Sales Page ────────────────────────────────────────────────── */
-const SalesPage = () => {
-  const [selected, setSelected] = useState('dashboard');
-  const [showBulkUpload, setShowBulkUpload] = useState(false);
-
-  return (
-    <div className="min-h-screen bg-slate-100">
-      <Sidebar />
-      <div className="ml-16">
-        <Topbar />
-        <main className="p-6 space-y-4">
-
-          {/* Selector */}
-          <div className="rounded-xl bg-white shadow-sm px-4 py-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-xs font-semibold text-gray-400 whitespace-nowrap">Select Section:</span>
-
-              {SALES_SECTIONS.map(section => (
-                <button
-                  key={section.key}
-                  onClick={() => setSelected(section.key)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors
-                    ${selected === section.key
-                      ? 'bg-orange-50 border-orange-300 text-orange-700'
-                      : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-white hover:border-gray-400 hover:text-gray-800'
-                    }`}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: section.color }} />
-                  {section.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tables */}
-          {selected === 'dashboard' && <SalesDashboard />}
-          {selected === 'customers' && <CustomersTable onBulkUpload={() => setShowBulkUpload(true)} />}
-          {selected === 'sales-bills' && <SalesBillsTable />}
-        </main>
-      </div>
-
-      {/* Bulk Upload Modal */}
-      {showBulkUpload && (
-        <BulkUploadModal
-          onClose={() => setShowBulkUpload(false)}
-          onUploadSuccess={() => {
-            // Trigger a refetch on CustomersTable here if needed
-            // e.g. bump a key: setTableKey(k => k + 1) and pass as key={tableKey}
-          }}
-        />
-      )}
-    </div>
-  );
-};
-
-export default SalesPage;
+export default SalesBulkUploadModal

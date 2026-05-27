@@ -223,7 +223,7 @@ const StockMovementPage = () => {
   const [suppliers, setSuppliers] = useState([])
   const [filterBatches, setFilterBatches] = useState([]) // For the filter dropdown
   const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
+  const [search, setSearch]       = useState(() => new URLSearchParams(window.location.search).get('search') || '')
   const [page, setPage]           = useState(1)
   const [error, setError]         = useState('')
   const [modalOpen, setModalOpen] = useState(false)

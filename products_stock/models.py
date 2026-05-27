@@ -150,6 +150,14 @@ class ProductStockLog(models.Model):
             defaults={'quantity': 0}
         )
 
+        # Prevent mixing materials in tanks and kettles
+        if is_inbound and location.type in ['tank', 'kettle']:
+            if ProductStock.objects.filter(location=location, quantity__gt=0).exclude(product=product).exists():
+                raise ValidationError(f"Location '{location.name}' is currently holding a different product.")
+            from raw_materials_stock.models import RawMaterialStock
+            if RawMaterialStock.objects.filter(location=location, quantity__gt=0).exists():
+                raise ValidationError(f"Location '{location.name}' is currently holding a raw material.")
+
         # Calculate new balance
         if is_inbound:
             new_balance = stock.quantity + quantity

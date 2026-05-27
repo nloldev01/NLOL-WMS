@@ -44,22 +44,47 @@ def generate_code():
 class Location(models.Model):
     TYPE_CHOICES = [
         ('warehouse', 'Warehouse'),
+        ('building',  'Building'),
+        ('factory',   'Factory'),
         ('zone',      'Zone'),
         ('block',     'Block'),
         ('aisle',     'Aisle'),
         ('rack',      'Rack'),
         ('shelf',     'Shelf'),
+        ('tank',      'Tank'),
+        ('kettle',    'Kettle'),
+        ('assembly',  'Assembly'),
     ]
+    
+    PARENT_TYPE_CHOICES = ['warehouse', 'building', 'factory']
 
     name       = models.CharField(max_length=255)
-    code = models.CharField(max_length=8, unique=False, default='')
+    code = models.CharField(max_length=8, unique=False, default='', blank=True)
     short_code = models.CharField(max_length=20)
     type       = models.CharField(max_length=50, choices=TYPE_CHOICES)
     parent     = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='children')
     is_active  = models.BooleanField(default=True)
+    is_production_area = models.BooleanField(default=False)
+    linked_asset = models.OneToOneField(
+        'Asset',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='virtual_location'
+    )
 
     class Meta:
         unique_together = ['short_code', 'parent']  # SH-01 can exist under multiple racks, but not twice under the same rack
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.parent and self.parent.type not in self.PARENT_TYPE_CHOICES:
+            raise ValidationError(
+                f"Parent location must be one of {', '.join(self.PARENT_TYPE_CHOICES)}, "
+                f"but '{self.parent.name}' is of type '{self.parent.type}'."
+            )
+        if self.parent and self.parent.id == self.id:
+            raise ValidationError("A location cannot be its own parent.")
 
     def __str__(self):
         return f"[{self.short_code}] {self.name}"
@@ -81,13 +106,19 @@ class Location(models.Model):
             parts.insert(0, parent.name)
             parent = parent.parent
         return " → ".join(parts)
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class Asset(models.Model):
     STATUS_CHOICES = [
-        ('active', 'Active'),
-        ('inactive', 'Inactive'),
+        ('active',      'Active'),
+        ('inactive',    'Inactive'),
         ('maintenance', 'Maintenance'),
+        ('mixing',      'Mixing'),
+        ('idle',        'Idle'),
     ]
 
     name = models.CharField(max_length=100)
@@ -100,12 +131,6 @@ class Asset(models.Model):
         on_delete=models.SET_NULL
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
-
-    location = models.ForeignKey(
-        'Location',
-        on_delete=models.PROTECT,
-        related_name='assets'
-    )
 
     def __str__(self):
         return self.name

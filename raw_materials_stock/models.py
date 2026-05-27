@@ -251,6 +251,31 @@ class RawMaterialStockLog(models.Model):
                 f"{quantity} requested at {location}."
             )
 
+        # Prevent mixing materials in tanks (single-product storage)
+        # Kettles intentionally hold multiple materials at once (mixing/production)
+        if is_inbound and location.type == 'tank':
+            if RawMaterialStock.objects.filter(location=location, quantity__gt=0).exclude(material=material).exists():
+                raise ValidationError(f"Location '{location.name}' is currently holding a different raw material.")
+            from products_stock.models import ProductStock
+            if ProductStock.objects.filter(location=location, quantity__gt=0).exists():
+                raise ValidationError(f"Location '{location.name}' is currently holding a product.")
+
+        # Validate against Location's Linked Asset Capacity (for tanks/kettles)
+        if is_inbound and hasattr(location, 'linked_asset') and location.linked_asset:
+            asset = location.linked_asset
+            if asset.capacity:
+                # Sum all quantities currently in this location across all materials/batches
+                current_total = RawMaterialStock.objects.filter(location=location).aggregate(
+                    total=models.Sum('quantity')
+                )['total'] or 0
+                
+                if current_total + quantity > asset.capacity:
+                    raise ValidationError(
+                        f"Capacity exceeded for location '{location.name}'. "
+                        f"The linked asset '{asset.name}' has a capacity of {asset.capacity}, "
+                        f"but adding {quantity} would result in {current_total + quantity}."
+                    )
+
         # Update snapshot
         stock.quantity = new_balance
         stock.save()

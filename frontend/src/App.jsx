@@ -15,7 +15,13 @@ import LPNFinderPage from './pages/LPNFinderPage';
 import ProductRecipePage from './pages/ProductRecipePage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProductionDashboardPage from './pages/ProductionDashboardPage';
-import SalesPage from './pages/SalesPage';
+import KettlesDashboardPage from './pages/KettlesDashboardPage';
+import VerticalTanksDashboardPage from './pages/VerticalTanksDashboardPage';
+import StorageTanksDashboardPage from './pages/StorageTanksDashboardPage';
+import SalesDashboardPage from './pages/SalesDashboardPage';
+import SalesCustomersPage from './pages/SalesCustomersPage';
+import SalesBillsPage from './pages/SalesBillsPage';
+import KettleLogsPage from './pages/KettleLogsPage';
 
 export const BASE_URL = 'http://localhost:8000/api';
 
@@ -39,8 +45,15 @@ function App() {
         <Route path="/stock/inventory-explorer" element={<InventoryExplorerPage />} />
         <Route path="/stock/lpn-finder" element={<LPNFinderPage />} />
         <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
+        <Route path="/production/kettles" element={<KettlesDashboardPage />} />
+        <Route path="/production/vertical-tanks" element={<VerticalTanksDashboardPage />} />
+        <Route path="/production/storage-tanks" element={<StorageTanksDashboardPage />} />
         <Route path="/production/recipes" element={<ProductRecipePage />} />
-        <Route path="/sales" element={<SalesPage />} />
+        <Route path="/production/kettle-logs" element={<KettleLogsPage />} />
+        <Route path="/sales" element={<Navigate to="/sales/dashboard" replace />} />
+        <Route path="/sales/dashboard" element={<SalesDashboardPage />} />
+        <Route path="/sales/customers" element={<SalesCustomersPage />} />
+        <Route path="/sales/bills" element={<SalesBillsPage />} />
 
         {/* Error Pages */}
         <Route path="/403" element={<ErrorPage type="403" />} />

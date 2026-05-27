@@ -39,6 +39,10 @@ class LocationSerializer(serializers.ModelSerializer):
     full_code = serializers.SerializerMethodField()
     full_path = serializers.SerializerMethodField()
     parent_name = serializers.CharField(source='parent.name', read_only=True)
+    parent_type = serializers.CharField(source='parent.type', read_only=True)
+    linked_asset_name = serializers.CharField(source='linked_asset.name', read_only=True)
+    linked_asset_type = serializers.CharField(source='linked_asset.asset_type', read_only=True)
+    linked_asset_status = serializers.CharField(source='linked_asset.status', read_only=True)
 
     class Meta:
         model  = Location
@@ -50,9 +54,15 @@ class LocationSerializer(serializers.ModelSerializer):
             'type',
             'parent',
             'parent_name',
+            'parent_type',
             'full_code',
             'full_path',
+            'linked_asset',
+            'linked_asset_name',
+            'linked_asset_type',
+            'linked_asset_status',
             'is_active',
+            'is_production_area',
         ]
 
     def get_full_code(self, obj):
@@ -61,11 +71,20 @@ class LocationSerializer(serializers.ModelSerializer):
     def get_full_path(self, obj):
         return obj.get_full_path()
 
+    def validate_parent(self, value):
+        if value and value.type not in Location.PARENT_TYPE_CHOICES:
+            raise serializers.ValidationError(
+                f"Parent location must be one of {', '.join(Location.PARENT_TYPE_CHOICES)}, "
+                f"but '{value.name}' is of type '{value.type}'."
+            )
+        return value
+
     def validate(self, data):
         # Prevent circular parent reference
         parent = data.get('parent')
-        if parent and parent == self.instance:
-            raise serializers.ValidationError("A location cannot be its own parent.")
+        instance = self.instance
+        if parent and instance and parent.id == instance.id:
+            raise serializers.ValidationError({"parent": "A location cannot be its own parent."})
         return data
     
 # ── Raw Materials & Consumables ───────────────────────────────────────────────
@@ -95,7 +114,6 @@ class AssetParameterSerializer(serializers.ModelSerializer):
 
 class AssetSerializer(serializers.ModelSerializer):
     parameters = AssetParameterSerializer(many=True, read_only=True)
-    location_name = serializers.CharField(source='location.name', read_only=True)
     capacity_unit_symbol = serializers.CharField(source='capacity_unit.symbol', read_only=True)
 
     class Meta:
@@ -108,8 +126,6 @@ class AssetSerializer(serializers.ModelSerializer):
             'capacity_unit',
             'capacity_unit_symbol',
             'status',
-            'location',
-            'location_name',
             'parameters',
         ]
         read_only_fields = ['id']

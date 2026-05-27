@@ -2,7 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { apiFetch } from '../utils/api'
 
 const PAGE_SIZE = 10
-const STATUS_CHOICES = ['active', 'inactive', 'maintenance']
+const STATUS_CHOICES = ['active', 'inactive', 'maintenance', 'mixing', 'idle']
+const ASSET_TYPE_CHOICES = [
+  'Storage Tank',
+  'Kettle',
+  'Vertical Tank',
+  'Machinery',
+  'Equipment',
+]
 
 const EMPTY_FORM = {
   name: '',
@@ -10,19 +17,16 @@ const EMPTY_FORM = {
   capacity: '',
   capacity_unit: '',
   status: 'active',
-  location: '',
-  serial_number: '',
-  purchase_date: '',
-  purchase_cost: '',
-  description: '',
   parameters: [],
 }
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 const STATUS_COLORS = {
-  active: 'bg-green-50 text-green-600 border border-green-200',
-  inactive: 'bg-gray-100 text-gray-400 border border-gray-200',
+  active:      'bg-green-50 text-green-600 border border-green-200',
+  inactive:    'bg-gray-100 text-gray-400 border border-gray-200',
   maintenance: 'bg-amber-50 text-amber-600 border border-amber-200',
+  mixing:      'bg-orange-50 text-orange-600 border border-orange-200',
+  idle:        'bg-slate-50 text-slate-500 border border-slate-200',
 }
 
 const StatusBadge = ({ status }) => (
@@ -32,7 +36,7 @@ const StatusBadge = ({ status }) => (
 )
 
 // ─── Asset Form ───────────────────────────────────────────────────────────────
-const AssetForm = ({ initial, units, locations, onSubmit, onClose, loading }) => {
+const AssetForm = ({ initial, units, onSubmit, onClose, loading }) => {
   const [form, setForm] = useState(initial || EMPTY_FORM)
   const [params, setParams] = useState(initial?.parameters || [])
   const [error, setError] = useState('')
@@ -51,9 +55,6 @@ const AssetForm = ({ initial, units, locations, onSubmit, onClose, loading }) =>
       ...form,
       capacity: form.capacity || null,
       capacity_unit: form.capacity_unit || null,
-      location: form.location || null,
-      purchase_cost: form.purchase_cost || null,
-      purchase_date: form.purchase_date || null,
       parameters: params.map(p => ({
         key: p.key,
         value: p.value,
@@ -85,23 +86,17 @@ const AssetForm = ({ initial, units, locations, onSubmit, onClose, loading }) =>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className={labelCls}>Asset Type *</label>
-          <input
+          <select
             value={form.asset_type}
             onChange={e => set('asset_type', e.target.value)}
-            placeholder="e.g. Equipment"
             className={inputCls}
-          />
+          >
+            <option value="">— Select Type —</option>
+            {ASSET_TYPE_CHOICES.map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
         </div>
-        <div>
-          <label className={labelCls}>Serial Number</label>
-          <input
-            value={form.serial_number}
-            onChange={e => set('serial_number', e.target.value)}
-            placeholder="e.g. SN-00123"
-            className={inputCls}
-          />
-        </div>
-
         <div>
           <label className={labelCls}>Status</label>
           <select
@@ -111,19 +106,6 @@ const AssetForm = ({ initial, units, locations, onSubmit, onClose, loading }) =>
           >
             {STATUS_CHOICES.map(s => (
               <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls}>Location</label>
-          <select
-            value={form.location}
-            onChange={e => set('location', e.target.value)}
-            className={inputCls}
-          >
-            <option value="">— Select Location —</option>
-            {locations.map(l => (
-              <option key={l.id} value={l.id}>{l.full_path || l.name}</option>
             ))}
           </select>
         </div>
@@ -151,37 +133,6 @@ const AssetForm = ({ initial, units, locations, onSubmit, onClose, loading }) =>
             ))}
           </select>
         </div>
-
-        <div>
-          <label className={labelCls}>Purchase Date</label>
-          <input
-            type="date"
-            value={form.purchase_date}
-            onChange={e => set('purchase_date', e.target.value)}
-            className={inputCls}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Purchase Cost</label>
-          <input
-            type="number"
-            value={form.purchase_cost}
-            onChange={e => set('purchase_cost', e.target.value)}
-            placeholder="0.00"
-            className={inputCls}
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className={labelCls}>Description</label>
-        <textarea
-          value={form.description}
-          onChange={e => set('description', e.target.value)}
-          rows={2}
-          placeholder="Optional notes..."
-          className={inputCls}
-        />
       </div>
 
       {/* Parameters */}
@@ -265,13 +216,8 @@ const AssetDetail = ({ asset }) => {
       <div className="bg-gray-50 rounded-xl p-4 space-y-1">
         {row('Name', asset.name)}
         {row('Type', asset.asset_type)}
-        {row('Serial Number', asset.serial_number)}
         {row('Status', asset.status)}
-        {row('Capacity', asset.capacity ? `${asset.capacity} ${asset.capacity_unit_detail?.symbol || ''}` : null)}
-        {row('Location', asset.location_detail?.full_path || asset.location_detail?.name)}
-        {row('Purchase Date', asset.purchase_date)}
-        {row('Purchase Cost', asset.purchase_cost ? `$${asset.purchase_cost}` : null)}
-        {row('Description', asset.description)}
+        {row('Capacity', asset.capacity ? `${asset.capacity} ${asset.capacity_unit_symbol || ''}` : null)}
       </div>
 
       {asset.parameters?.length > 0 && (
@@ -299,7 +245,6 @@ const AssetDetail = ({ asset }) => {
 const AssetsTable = () => {
   const [assets, setAssets] = useState([])
   const [units, setUnits] = useState([])
-  const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -322,16 +267,14 @@ const AssetsTable = () => {
   const fetchAll = async () => {
     setLoading(true)
     try {
-      const [aRes, uRes, lRes] = await Promise.all([
+      const [aRes, uRes] = await Promise.all([
         apiFetch('/master-data/assets/'),
         apiFetch('/master-data/units/'),
-        apiFetch('/master-data/locations/'),
       ])
-      if (aRes && uRes && lRes) {
-        const [a, u, l] = await Promise.all([aRes.json(), uRes.json(), lRes.json()])
+      if (aRes && uRes) {
+        const [a, u] = await Promise.all([aRes.json(), uRes.json()])
         setAssets(Array.isArray(a) ? a : a.results || [])
         setUnits(Array.isArray(u) ? u : u.results || [])
-        setLocations(Array.isArray(l) ? l : l.results || [])
       }
     } catch {
       setError('Failed to load data')
@@ -466,31 +409,27 @@ const AssetsTable = () => {
                 <th className="px-6 py-3 w-10">No</th>
                 <th className="px-6 py-3">Name</th>
                 <th className="px-6 py-3">Type</th>
-                <th className="px-6 py-3">Serial No.</th>
+                <th className="px-6 py-3">Capacity</th>
                 <th className="px-6 py-3 text-center">Status</th>
-                <th className="px-6 py-3">Location</th>
                 <th className="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-gray-400">No assets found</td>
+                  <td colSpan={6} className="px-6 py-10 text-center text-gray-400">No assets found</td>
                 </tr>
               ) : paginated.map((asset, idx) => (
                 <tr key={asset.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                   <td className="px-6 py-3 font-medium text-gray-900">{asset.name}</td>
                   <td className="px-6 py-3 text-gray-500">{asset.asset_type}</td>
-                  <td className="px-6 py-3">
-                    <span className="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                      {asset.serial_number || '—'}
-                    </span>
+                  <td className="px-6 py-3 text-gray-500 text-xs">
+                    {asset.capacity ? `${asset.capacity} ${asset.capacity_unit_symbol || ''}` : '—'}
                   </td>
                   <td className="px-6 py-3 text-center">
                     <StatusBadge status={asset.status} />
                   </td>
-                  <td className="px-6 py-3 text-gray-500 text-xs">{asset.location_detail?.name || '—'}</td>
                   <td className="px-6 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
@@ -550,7 +489,6 @@ const AssetsTable = () => {
             </div>
             <AssetForm
               units={units}
-              locations={locations}
               onSubmit={handleCreate}
               onClose={() => setModal(null)}
               loading={saving}
@@ -570,7 +508,6 @@ const AssetsTable = () => {
             <AssetForm
               initial={selected}
               units={units}
-              locations={locations}
               onSubmit={handleUpdate}
               onClose={() => setModal(null)}
               loading={saving}

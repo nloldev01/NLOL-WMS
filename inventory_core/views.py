@@ -16,25 +16,15 @@ class BatchViewSet(viewsets.ModelViewSet):
     search_fields = ['batch_code']
 
     def perform_create(self, serializer):
-        """
-        Instead of trusting frontend batch_code,
-        we generate it centrally.
-        """
         batch_type = self.request.data.get('batch_type', 'RAW')
         batch_code = BatchService.generate_code(batch_type=batch_type)
         serializer.save(batch_code=batch_code)
 
     @action(detail=False, methods=['post'])
     def generate_only(self, request):
-        """
-        Just returns a new batch code without saving
-        """
         batch_type = request.data.get('batch_type', 'RAW')
         batch_code = BatchService.generate_code(batch_type=batch_type)
-
-        return Response({
-            "batch_code": batch_code
-        })
+        return Response({"batch_code": batch_code})
 
 
 class LPNViewSet(viewsets.ModelViewSet):
