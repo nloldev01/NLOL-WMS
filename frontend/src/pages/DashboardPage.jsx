@@ -1,11 +1,11 @@
-import Topbar from '../components/Topbar'
+﻿import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 
 const DashboardPage = () => {
   return (
     <div className="min-h-screen bg-slate-100">
       <Sidebar />
-      <div className="ml-16">
+      <div className="md:ml-16">
         <Topbar />
         <main className="p-6">
           <div className="rounded-xl bg-white shadow-sm p-6 h-24 mb-6">

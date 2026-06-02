@@ -1,12 +1,13 @@
 from django.contrib import admin
-from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Product, ProductGroup, ProductSubGroup, ProductSegment
+from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Product, FinishedProduct, FinishedProductVariant, ProductGroup, ProductSubGroup, ProductSegment
 
 @admin.register(Unit)
 class UnitAdmin(admin.ModelAdmin):
-    list_display  = ['name', 'code', 'symbol', 'is_active', 'created_at']
-    list_filter   = ['is_active']
+    list_display  = ['name', 'code', 'symbol', 'unit_type', 'base_unit', 'is_active', 'created_at']
+    list_filter   = ['is_active', 'unit_type']
     search_fields = ['name', 'code', 'symbol']
     ordering      = ['name']
+    fields        = ['name', 'code', 'symbol', 'unit_type', 'icon', 'base_unit', 'description', 'is_active']
 
 
 @admin.register(FiscalYear)
@@ -53,7 +54,21 @@ class ProductSegmentAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'product_group', 'product_segment', 'product_sub_group', 'unit', 'is_available')
-    list_filter = ('is_available', 'product_group', 'product_segment', 'product_sub_group')
-    search_fields = ('name', 'description', 'product_group__name', 'product_segment__name', 'product_sub_group__name')
+    list_display = ('name', 'unit', 'is_available')
+    list_filter = ('is_available',)
+    search_fields = ('name', 'description')
+
+
+@admin.register(FinishedProduct)
+class FinishedProductAdmin(admin.ModelAdmin):
+    list_display = ('name', 'base_product', 'product_group', 'is_available')
+    list_filter = ('is_available', 'product_group')
+    search_fields = ('name', 'description', 'base_product__name')
+
+
+@admin.register(FinishedProductVariant)
+class FinishedProductVariantAdmin(admin.ModelAdmin):
+    list_display = ('finished_product', 'unit', 'material', 'volume', 'volume_unit', 'sku_code', 'is_available', 'added_sticker')
+    list_filter = ('is_available', 'added_sticker', 'material', 'unit')
+    search_fields = ('finished_product__name', 'sku_code')
 

@@ -3,10 +3,12 @@ from .models import Batch, LPN
 
 
 class BatchSerializer(serializers.ModelSerializer):
-    raw_material_name = serializers.CharField(source='raw_material.name', read_only=True)
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    lpns = serializers.SerializerMethodField()
-    current_stock = serializers.SerializerMethodField()
+    raw_material_name              = serializers.CharField(source='raw_material.name', read_only=True)
+    product_name                   = serializers.CharField(source='product.name', read_only=True)
+    finished_product_variant_name  = serializers.CharField(source='finished_product_variant.finished_product.name', read_only=True)
+    finished_product_variant_label = serializers.CharField(source='finished_product_variant.display_label', read_only=True)
+    lpns                           = serializers.SerializerMethodField()
+    current_stock                  = serializers.SerializerMethodField()
 
     class Meta:
         model = Batch
@@ -14,6 +16,7 @@ class BatchSerializer(serializers.ModelSerializer):
             'id', 'batch_code', 'batch_type',
             'raw_material', 'raw_material_name',
             'product', 'product_name',
+            'finished_product_variant', 'finished_product_variant_name', 'finished_product_variant_label',
             'supplier', 'expiry_date', 'created_at',
             'current_stock', 'lpns',
         ]
@@ -25,6 +28,8 @@ class BatchSerializer(serializers.ModelSerializer):
             return obj.stock_levels.aggregate(total=Sum('quantity'))['total'] or 0
         elif obj.batch_type == 'PRD':
             return obj.product_stock_levels.aggregate(total=Sum('quantity'))['total'] or 0
+        elif obj.batch_type == 'FIN':
+            return obj.finished_product_stock_levels.aggregate(total=Sum('quantity'))['total'] or 0
         return 0
 
     def get_lpns(self, obj):
@@ -32,15 +37,17 @@ class BatchSerializer(serializers.ModelSerializer):
 
 
 class LPNSerializer(serializers.ModelSerializer):
-    batch_code = serializers.CharField(source='batch.batch_code', read_only=True)
-    batch_type = serializers.CharField(source='batch.batch_type', read_only=True)
-    material_name = serializers.CharField(source='batch.raw_material.name', read_only=True)
-    product_name = serializers.CharField(source='batch.product.name', read_only=True)
+    batch_code                    = serializers.CharField(source='batch.batch_code', read_only=True)
+    batch_type                    = serializers.CharField(source='batch.batch_type', read_only=True)
+    material_name                 = serializers.CharField(source='batch.raw_material.name', read_only=True)
+    product_name                  = serializers.CharField(source='batch.product.name', read_only=True)
+    finished_product_variant_name = serializers.CharField(source='batch.finished_product_variant.finished_product.name', read_only=True)
 
     class Meta:
         model = LPN
         fields = [
             'id', 'lpn_code', 'batch', 'batch_code', 'batch_type',
-            'material_name', 'product_name', 'created_at', 'is_active',
+            'material_name', 'product_name', 'finished_product_variant_name',
+            'created_at', 'is_active',
         ]
 

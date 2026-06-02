@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import Topbar from '../components/Topbar';
 import Sidebar from '../components/Sidebar';
 import { apiFetch } from '../utils/api';
@@ -165,7 +165,7 @@ const ProductRecipePage = () => {
   return (
     <div className="min-h-screen bg-slate-50">
       <Sidebar />
-      <div className="ml-16">
+      <div className="md:ml-16">
         <Topbar />
         <main className="h-[calc(100-64px)] overflow-hidden">
           <div className="flex h-[calc(100vh-64px)]">

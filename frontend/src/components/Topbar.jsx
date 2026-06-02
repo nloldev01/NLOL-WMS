@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BellIcon } from '@heroicons/react/24/outline'
+import { BellIcon, Bars3Icon } from '@heroicons/react/24/outline'
 import { apiFetch } from '../utils/api'
 
 const Topbar = () => {
@@ -43,8 +43,17 @@ const Topbar = () => {
   }
 
   return (
-    <header className="relative flex items-center justify-between bg-white border-b border-gray-200 px-6 h-14 shadow-sm">
-      <div className="text-sm text-gray-700">{today}</div>
+    <header className="relative flex items-center justify-between bg-white border-b border-gray-200 px-4 md:px-6 h-14 shadow-sm">
+      <div className="flex items-center gap-3">
+        <button
+          className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 transition"
+          aria-label="Open menu"
+          onClick={() => window.dispatchEvent(new CustomEvent('sidebar-open'))}
+        >
+          <Bars3Icon className="w-5 h-5 text-gray-700" />
+        </button>
+        <div className="text-sm text-gray-700">{today}</div>
+      </div>
       <div className="flex items-center gap-4">
         <button className="p-2 rounded-full hover:bg-gray-100 transition" aria-label="Notifications">
           <BellIcon className="w-5 h-5 text-gray-700" />

@@ -8,20 +8,12 @@ const PAGE_SIZE = 10
 const emptyForm = {
   name: '',
   description: '',
-  data_group_id: '',
-  sub_group_id: '',
-  product_segment_id: '',
   unit_id: '',
-  secondary_unit_id: '',
-  capacity_value: '',
   is_available: true,
 }
 
 const ProductPage = () => {
   const [products, setProducts] = useState([])
-  const [dataGroups, setDataGroups] = useState([])
-  const [subGroups, setSubGroups] = useState([])
-  const [productSegments, setProductSegments] = useState([])
   const [units, setUnits] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -31,48 +23,30 @@ const ProductPage = () => {
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [filters, setFilters] = useState({
-    product_group: '',
-    product_sub_group: '',
-    product_segment: '',
-    is_available: '',
-  })
+  const [filters, setFilters] = useState({ is_available: '' })
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef(null)
 
   useEffect(() => {
     fetchProducts()
-    fetchDataGroups()
-    fetchSubGroups()
-    fetchProductSegments()
     fetchUnits()
   }, [])
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (filterRef.current && !filterRef.current.contains(e.target)) {
+      if (filterRef.current && !filterRef.current.contains(e.target))
         setFilterOpen(false)
-      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // filtered
   const filtered = products.filter(p => {
-    const matchesSearch =
-      p.name?.toLowerCase().includes(search.toLowerCase()) ||
-      p.product_group_name?.toLowerCase().includes(search.toLowerCase()) ||
-      p.product_segment_name?.toLowerCase().includes(search.toLowerCase())
-
-    const matchesGroup    = !filters.product_group     || String(p.product_group)   === filters.product_group
-    const matchesSubGroup = !filters.product_sub_group || String(p.product_sub_group) === filters.product_sub_group
-    const matchesSegment  = !filters.product_segment   || String(p.product_segment) === filters.product_segment
-    const matchesAvail    = filters.is_available === ''
+    const matchesSearch = p.name?.toLowerCase().includes(search.toLowerCase())
+    const matchesAvail  = filters.is_available === ''
       ? true
       : String(p.is_available) === filters.is_available
-
-    return matchesSearch && matchesGroup && matchesSubGroup && matchesSegment && matchesAvail
+    return matchesSearch && matchesAvail
   })
 
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
@@ -85,44 +59,14 @@ const ProductPage = () => {
         const data = await res.json()
         setProducts(Array.isArray(data) ? data : (data.results ?? []))
       } else {
-        setProducts([]) // Set empty products array if response is not ok
+        setProducts([])
       }
     } catch {
-      setProducts([]) // Set empty products array in case of an error
+      setProducts([])
       setError('Failed to load products')
     } finally {
       setLoading(false)
     }
-  }
-
-  const fetchDataGroups = async () => {
-    try {
-      const res = await apiFetch('/master-data/product-groups/')
-      if (res && res.ok) {
-        const data = await res.json()
-        setDataGroups(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load data groups') }
-  }
-
-  const fetchSubGroups = async () => {
-    try {
-      const res = await apiFetch('/master-data/product-sub-groups/')
-      if (res && res.ok) {
-        const data = await res.json()
-        setSubGroups(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load sub groups') }
-  }
-
-  const fetchProductSegments = async () => {
-    try {
-      const res = await apiFetch('/master-data/product-segments/')
-      if (res && res.ok) {
-        const data = await res.json()
-        setProductSegments(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load product segments') }
   }
 
   const fetchUnits = async () => {
@@ -132,23 +76,19 @@ const ProductPage = () => {
         const data = await res.json()
         setUnits(Array.isArray(data) ? data : (data.results ?? []))
       } else {
-        console.error('Failed to fetch units: Non-OK response', res.status)
-        setUnits([]) // Fallback to empty array
+        setUnits([])
       }
-    } catch (error) {
-      console.error('Failed to fetch units:', error)
-      setUnits([]) // Fallback to empty array
+    } catch {
+      setUnits([])
     }
   }
 
+  const secondaryUnits = units.filter(u => u.unit_type === 'secondary')
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(product => {
-    const unit = units.find(u => u.id === product.unit) || {};
-    return {
-      ...product,
-      unit_name: unit.name || '—',
-      unit_symbol: unit.symbol || '—',
-    };
+    const unit = units.find(u => u.id === product.unit) || {}
+    return { ...product, unit_name: unit.name || '-', unit_symbol: unit.symbol || '-' }
   })
 
   const openAdd = () => {
@@ -160,16 +100,10 @@ const ProductPage = () => {
 
   const openEdit = (product) => {
     setEditProduct(product)
-    // openEdit — IDs are already flat integers from the serializer
     setForm({
       name: product.name || '',
       description: product.description || '',
-      data_group_id: product.product_group || '',
-      sub_group_id: product.product_sub_group || '',
-      product_segment_id: product.product_segment || '',
       unit_id: product.unit || '',
-      secondary_unit_id: product.secondary_unit || '',
-      capacity_value: product.capacity_value || '',
       is_available: product.is_available ?? true,
     })
     setError('')
@@ -195,30 +129,21 @@ const ProductPage = () => {
       return
     }
 
-    // Build payload — only include FK fields if they have a value
+    if (!editProduct && !form.unit_id) {
+      setError('Unit is required.')
+      setSubmitting(false)
+      return
+    }
+
     const payload = {
       name: form.name.trim(),
       description: form.description.trim(),
       is_available: form.is_available,
     }
-
-    if (form.data_group_id)       payload.product_group     = parseInt(form.data_group_id)
-    if (form.sub_group_id)        payload.product_sub_group = parseInt(form.sub_group_id)
-    if (form.product_segment_id)  payload.product_segment   = parseInt(form.product_segment_id)
-    if (form.unit_id)             payload.unit              = parseInt(form.unit_id)
-    if (form.secondary_unit_id)   payload.secondary_unit    = parseInt(form.secondary_unit_id)
-    if (form.capacity_value)      payload.capacity_value    = form.capacity_value
-
-    // On create, all FK fields are required
-    if (!editProduct) {
-      if (!form.data_group_id)      return (setError('Data group is required.'),     setSubmitting(false))
-      if (!form.sub_group_id)       return (setError('Sub group is required.'),      setSubmitting(false))
-      if (!form.product_segment_id) return (setError('Segment is required.'),setSubmitting(false))
-      if (!form.unit_id)            return (setError('Unit is required.'),           setSubmitting(false))
-    }
+    if (form.unit_id) payload.unit = parseInt(form.unit_id)
 
     const endpoint = editProduct ? `/master-data/products/${editProduct.id}/` : '/master-data/products/'
-    const method   = editProduct ? 'PATCH' : 'POST'   // PATCH so only sent fields are updated
+    const method   = editProduct ? 'PATCH' : 'POST'
 
     try {
       const res = await apiFetch(endpoint, { method, body: JSON.stringify(payload) })
@@ -241,19 +166,16 @@ const ProductPage = () => {
   return (
     <div className="min-h-screen bg-slate-100">
       <Sidebar />
-      <div className="ml-16">
+      <div className="md:ml-16">
         <Topbar />
         <main className="p-6">
 
-          {/* Breadcrumb */}
-          <p className="text-xs text-gray-400 mb-3">Products</p>
+          <p className="text-xs text-gray-400 mb-3">Base Products</p>
 
-          {/* Card */}
           <div className="rounded-xl bg-white shadow-sm">
 
-            {/* Table Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">Products</h2>
+              <h2 className="text-base font-semibold text-gray-900">Base Products</h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={openAdd}
@@ -301,54 +223,13 @@ const ProductPage = () => {
                         <p className="text-xs font-semibold text-gray-700">Filters</p>
                         {activeFilterCount > 0 && (
                           <button
-                            onClick={() => { setFilters({ product_group: '', product_sub_group: '', product_segment: '', is_available: '' }); setPage(1) }}
+                            onClick={() => { setFilters({ is_available: '' }); setPage(1) }}
                             className="text-[10px] text-orange-500 hover:underline"
                           >
                             Clear all
                           </button>
                         )}
                       </div>
-
-                      {/* Data Group */}
-                      <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Data Group</label>
-                        <select
-                          value={filters.product_group}
-                          onChange={e => { setFilters(f => ({ ...f, product_group: e.target.value })); setPage(1) }}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
-                        >
-                          <option value="">All</option>
-                          {dataGroups.map(g => <option key={g.id} value={String(g.id)}>{g.name}</option>)}
-                        </select>
-                      </div>
-
-                      {/* Sub Group */}
-                      <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Sub Group</label>
-                        <select
-                          value={filters.product_sub_group}
-                          onChange={e => { setFilters(f => ({ ...f, product_sub_group: e.target.value })); setPage(1) }}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
-                        >
-                          <option value="">All</option>
-                          {subGroups.map(sg => <option key={sg.id} value={String(sg.id)}>{sg.name}</option>)}
-                        </select>
-                      </div>
-
-                      {/* Segment */}
-                      <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Segment</label>
-                        <select
-                          value={filters.product_segment}
-                          onChange={e => { setFilters(f => ({ ...f, product_segment: e.target.value })); setPage(1) }}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
-                        >
-                          <option value="">All</option>
-                          {productSegments.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
-                        </select>
-                      </div>
-
-                      {/* Availability */}
                       <div>
                         <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Availability</label>
                         <select
@@ -367,7 +248,6 @@ const ProductPage = () => {
               </div>
             </div>
 
-            {/* Table */}
             {loading ? (
               <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
             ) : (
@@ -375,13 +255,9 @@ const ProductPage = () => {
                 <thead className="bg-primary text-white text-xs uppercase">
                   <tr>
                     <th className="px-6 py-3 w-10">No</th>
-                    <th className="px-6 py-3">Product Name</th>
+                    <th className="px-6 py-3">Base Product Name</th>
                     <th className="px-6 py-3">Description</th>
-                    <th className="px-6 py-3">Data Group</th>
-                    <th className="px-6 py-3">Sub Group</th>
-                    <th className="px-6 py-3">Segment</th>
                     <th className="px-6 py-3">Unit</th>
-                    <th className="px-6 py-3">Capacity</th>
                     <th className="px-6 py-3">Available</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
@@ -389,27 +265,19 @@ const ProductPage = () => {
                 <tbody className="divide-y divide-gray-50">
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-10 text-center text-gray-400">No products found</td>
+                      <td colSpan={6} className="px-6 py-10 text-center text-gray-400">No products found</td>
                     </tr>
                   ) : paginated.map((product, idx) => (
                     <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                       <td className="px-6 py-3 font-medium text-gray-900">{product.name}</td>
-                      <td className="px-6 py-3 text-gray-500 max-w-[160px] truncate">{product.description || '—'}</td>
-                      <td className="px-6 py-3 text-gray-500">{product.product_group_name || '—'}</td>
-                      <td className="px-6 py-3 text-gray-500">{product.product_sub_group_name || '—'}</td>
-                      <td className="px-6 py-3 text-gray-500">{product.product_segment_name || '—'}</td>
+                      <td className="px-6 py-3 text-gray-500 max-w-[160px] truncate">{product.description || '-'}</td>
                       <td className="px-6 py-3">
-                        {product.unit_symbol ? (
+                        {product.unit_symbol && product.unit_symbol !== '-' ? (
                           <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-600 text-xs font-medium">
                             {product.unit_symbol}
                           </span>
-                        ) : '—'}
-                      </td>
-                      <td className="px-6 py-3 text-gray-500">
-                        {product.capacity_value && product.secondary_unit_symbol ? (
-                            `${parseFloat(product.capacity_value)} ${product.secondary_unit_symbol}`
-                        ) : '—'}
+                        ) : '-'}
                       </td>
                       <td className="px-6 py-3">
                         <button
@@ -443,47 +311,45 @@ const ProductPage = () => {
               </table>
             )}
 
-            {/* Pagination */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
-                Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
               </p>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
                   className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >‹</button>
+                >&lsaquo;</button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                   <button
                     key={p}
                     onClick={() => setPage(p)}
-                    className={`w-7 h-7 rounded text-xs font-medium ${page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
-                      }`}
+                    className={`w-7 h-7 rounded text-xs font-medium ${
+                      page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
+                    }`}
                   >{p}</button>
                 ))}
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                   className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >›</button>
+                >&rsaquo;</button>
               </div>
             </div>
           </div>
         </main>
       </div>
 
-      {/* Add / Edit Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
 
-            {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">
                 {editProduct ? 'Edit Product' : 'Add New Product'}
               </h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
             </div>
 
             <div className="px-6 py-5 space-y-4">
@@ -491,7 +357,6 @@ const ProductPage = () => {
                 <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</div>
               )}
 
-              {/* Product Name */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Product Name *</label>
                 <input
@@ -503,7 +368,6 @@ const ProductPage = () => {
                 />
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
                 <textarea
@@ -516,90 +380,19 @@ const ProductPage = () => {
                 />
               </div>
 
-              {/* Data Group / Sub Group */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Data Group *</label>
-                  <select
-                    name="data_group_id"
-                    value={form.data_group_id}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  >
-                    <option value="">Select data group</option>
-                    {dataGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Sub Group *</label>
-                  <select
-                    name="sub_group_id"
-                    value={form.sub_group_id}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  >
-                    <option value="">Select sub group</option>
-                    {subGroups.map(sg => <option key={sg.id} value={sg.id}>{sg.name}</option>)}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Unit *</label>
+                <select
+                  name="unit_id"
+                  value={form.unit_id}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                >
+                  <option value="">Select unit</option>
+                  {secondaryUnits.map(u => <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>)}
+                </select>
               </div>
 
-              {/* Segment / Unit */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Segment *</label>
-                  <select
-                    name="product_segment_id"
-                    value={form.product_segment_id}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  >
-                    <option value="">Select segment</option>
-                    {productSegments.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Unit *</label>
-                  <select
-                    name="unit_id"
-                    value={form.unit_id}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  >
-                    <option value="">Select unit</option>
-                    {units.map(u => <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Capacity / Secondary Unit */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Capacity Value</label>
-                  <input
-                    name="capacity_value"
-                    type="number"
-                    step="0.01"
-                    value={form.capacity_value}
-                    onChange={handleChange}
-                    placeholder="e.g. 0.75"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Secondary Unit</label>
-                  <select
-                    name="secondary_unit_id"
-                    value={form.secondary_unit_id}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  >
-                    <option value="">Select secondary unit</option>
-                    {units.map(u => <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>)}
-                  </select>
-                </div>
-              </div>
-              {/* Availability */}
               <div className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-gray-700">Available</p>
@@ -619,7 +412,6 @@ const ProductPage = () => {
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
                 onClick={closeModal}

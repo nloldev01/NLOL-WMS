@@ -77,12 +77,16 @@ const LPNFinderPage = () => {
       }
 
       if (foundBatch) {
-        const type = foundBatch.batch_type === 'RAW' ? 'raw' : 'product'
-        
+        const type = foundBatch.batch_type === 'RAW' ? 'raw'
+                   : foundBatch.batch_type === 'FIN' ? 'finished'
+                   : 'product'
+
         // 3. Check Current Stock Status (Optional/Additional)
-        const stockEndpoint = type === 'raw' 
+        const stockEndpoint = type === 'raw'
           ? `/raw-materials-stock/stock/?batch=${foundBatch.id}`
-          : `/products-stock/stock/?batch=${foundBatch.id}`
+          : type === 'finished'
+            ? `/products-stock/finished-product-stock/?batch=${foundBatch.id}`
+            : `/products-stock/stock/?batch=${foundBatch.id}`
         
         const stockRes = await apiFetch(stockEndpoint)
         const stockDataRaw = await stockRes.json()
@@ -98,7 +102,7 @@ const LPNFinderPage = () => {
           ...foundBatch,
           type,
           material_name: foundBatch.raw_material_name || foundBatch.material_name,
-          product_name: foundBatch.product_name,
+          product_name: foundBatch.finished_product_variant_name || foundBatch.product_name,
           totalQuantity,
           quantity: specificRecord ? specificRecord.quantity : totalQuantity,
           location_name: specificRecord ? specificRecord.location_name : (stockData.length > 1 ? `${stockData.length} Locations` : (stockData[0]?.location_name || 'No Active Stock')),
@@ -108,9 +112,11 @@ const LPNFinderPage = () => {
         })
 
         // 4. Fetch History
-        const logEndpoint = type === 'raw' 
-          ? `/raw-materials-stock/stock-movements/?batch=${foundBatch.id}` 
-          : `/products-stock/stock-movements/?batch=${foundBatch.id}`
+        const logEndpoint = type === 'raw'
+          ? `/raw-materials-stock/stock-movements/?batch=${foundBatch.id}`
+          : type === 'finished'
+            ? `/products-stock/finished-product-stock-movements/?batch=${foundBatch.id}`
+            : `/products-stock/stock-movements/?batch=${foundBatch.id}`
         
         const historyRes = await apiFetch(logEndpoint)
         const historyData = await historyRes.json()
@@ -264,13 +270,13 @@ const LPNFinderPage = () => {
                 <div className="absolute right-0 top-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
                 
                 <div className="flex items-center gap-6 relative z-10">
-                  <div className={`w-20 h-20 rounded-3xl flex items-center justify-center ${item.type === 'raw' ? 'bg-blue-500' : 'bg-orange-500'} shadow-xl shadow-black/20`}>
+                  <div className={`w-20 h-20 rounded-3xl flex items-center justify-center ${item.type === 'raw' ? 'bg-blue-500' : item.type === 'finished' ? 'bg-emerald-500' : 'bg-orange-500'} shadow-xl shadow-black/20`}>
                     {item.type === 'raw' ? <CubeIcon className="w-12 h-12" /> : <ArchiveBoxIcon className="w-12 h-12" />}
                   </div>
                   <div>
                     <h2 className="text-3xl font-black leading-tight">{item.type === 'raw' ? item.material_name : item.product_name}</h2>
                     <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">
-                      {item.type === 'raw' ? 'Raw Material' : 'Finished Product'} • {item.batch_code}
+                      {item.type === 'raw' ? 'Raw Material' : item.type === 'finished' ? 'Finished Product' : 'Product'} • {item.batch_code}
                     </p>
                   </div>
                 </div>
@@ -391,7 +397,7 @@ const LPNFinderPage = () => {
                   <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
                     <div className="divide-y divide-slate-50">
                       {history.map((log, idx) => {
-                        const isInbound = ['purchase', 'production', 'return', 'transfer_in', 'adjustment_in', 'sale_return'].includes(log.movement_type);
+                        const isInbound = ['purchase', 'production', 'packaging_production', 'return', 'transfer_in', 'adjustment_in', 'sale_return'].includes(log.movement_type);
                         const qty = parseFloat(log.quantity);
                         
                         return (

@@ -4,9 +4,34 @@ from django.db import connection
 
 
 class Unit(models.Model):
+    UNIT_TYPE_CHOICES = [
+        ('primary',   'Primary'),
+        ('secondary', 'Secondary'),
+    ]
+    ICON_CHOICES = [
+        ('bottle',  'Bottle'),
+        ('can',     'Can / Tin'),
+        ('pail',    'Pail / Bucket'),
+        ('drum',    'Drum / Barrel'),
+        ('pouch',   'Pouch / Bag'),
+        ('box',     'Box / Carton'),
+        ('jug',     'Jug / Jerry Can'),
+        ('jar',     'Jar'),
+        ('other',   'Other'),
+    ]
+
     name        = models.CharField(max_length=100, unique=True)
     code        = models.CharField(max_length=20, unique=True)
     symbol      = models.CharField(max_length=20)
+    unit_type   = models.CharField(max_length=20, choices=UNIT_TYPE_CHOICES, default='primary')
+    icon        = models.CharField(max_length=20, choices=ICON_CHOICES, default='other', blank=True)
+    base_unit   = models.ForeignKey(
+        'self',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='derived_units',
+        help_text="Base/volume unit this unit maps to (e.g. Bottle → Litre)",
+    )
     description = models.TextField(blank=True, null=True)
     is_active   = models.BooleanField(default=True)
     created_at  = models.DateTimeField(auto_now_add=True)
@@ -56,7 +81,7 @@ class Location(models.Model):
         ('assembly',  'Assembly'),
     ]
     
-    PARENT_TYPE_CHOICES = ['warehouse', 'building', 'factory']
+    PARENT_TYPE_CHOICES = ['warehouse', 'building', 'factory','zone','block','aisle','rack','shelf']
 
     name       = models.CharField(max_length=255)
     code = models.CharField(max_length=8, unique=False, default='', blank=True)
@@ -249,34 +274,11 @@ class Product(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     is_available = models.BooleanField(default=True)
-    product_group = models.ForeignKey(
-        ProductGroup,
-        on_delete=models.PROTECT,
-        related_name='products'
-    )
-    product_segment = models.ForeignKey(
-        ProductSegment,
-        on_delete=models.PROTECT,
-        related_name='products'
-    )
-    product_sub_group = models.ForeignKey(
-        ProductSubGroup,
-        on_delete=models.PROTECT,
-        related_name='products'
-    )
     unit = models.ForeignKey(
         'Unit',
         on_delete=models.PROTECT,
         related_name='products'
     )
-    secondary_unit = models.ForeignKey(
-        'Unit',
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='secondary_products'
-    )
-    capacity_value = models.DecimalField(max_digits=10, decimal_places=4, default=0, null=True, blank=True)
 
     class Meta:
         db_table = 'products'
@@ -284,4 +286,96 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class FinishedProduct(models.Model):
+    name = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True, null=True)
+    base_product = models.ForeignKey(
+        'Product',
+        on_delete=models.PROTECT,
+        related_name='finished_products'
+    )
+    is_available = models.BooleanField(default=True)
+    product_group = models.ForeignKey(
+        ProductGroup,
+        on_delete=models.PROTECT,
+        related_name='finished_products'
+    )
+    product_segment = models.ForeignKey(
+        ProductSegment,
+        on_delete=models.PROTECT,
+        related_name='finished_products'
+    )
+    product_sub_group = models.ForeignKey(
+        ProductSubGroup,
+        on_delete=models.PROTECT,
+        related_name='finished_products'
+    )
+
+    class Meta:
+        db_table = 'finished_products'
+        ordering = ['name']
+
+    def save(self, *args, **kwargs):
+        if not self.name and self.base_product_id:
+            self.name = self.base_product.name
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class FinishedProductVariant(models.Model):
+    MATERIAL_CHOICES = [
+        ('pet',   'PET Plastic'),
+        ('hdpe',  'HDPE Plastic'),
+        ('glass', 'Glass'),
+        ('metal', 'Metal / Tin'),
+        ('foil',  'Foil / Laminate'),
+        ('paper', 'Paper / Cardboard'),
+        ('other', 'Other'),
+    ]
+
+    finished_product = models.ForeignKey(
+        'FinishedProduct',
+        on_delete=models.PROTECT,
+        related_name='variants'
+    )
+    # Container type = primary unit from Unit master data (e.g., Bottle, Can, Pouch)
+    unit = models.ForeignKey(
+        'Unit',
+        on_delete=models.PROTECT,
+        related_name='fp_variants_unit'
+    )
+    material = models.CharField(max_length=20, choices=MATERIAL_CHOICES, blank=True, null=True)
+    volume   = models.DecimalField(max_digits=14, decimal_places=4)
+    volume_unit = models.ForeignKey(
+        'Unit',
+        on_delete=models.PROTECT,
+        related_name='fp_variants_volume'
+    )
+    secondary_unit = models.ForeignKey(
+        'Unit',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='fp_variants_secondary'
+    )
+    capacity_value = models.DecimalField(max_digits=14, decimal_places=4, default=0, null=True, blank=True)
+    base_quantity  = models.DecimalField(max_digits=14, decimal_places=4)
+    sku_code       = models.CharField(max_length=50, unique=True, blank=True, null=True)
+    is_available   = models.BooleanField(default=True)
+    added_sticker  = models.BooleanField(default=False)
+    sticker_name   = models.CharField(max_length=255, blank=True, null=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finished_product_variants'
+        ordering = ['finished_product__name', 'volume']
+        unique_together = ['finished_product', 'unit', 'volume', 'volume_unit']
+
+    def __str__(self):
+        return f"{self.finished_product.name} {self.volume}{self.volume_unit.symbol} ({self.unit.name})"
 

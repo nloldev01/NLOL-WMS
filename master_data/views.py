@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable, ProductGroup, ProductSubGroup, ProductSegment, Product, Supplier
-from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer, ProductGroupSerializer, ProductSubGroupSerializer, ProductSegmentSerializer, ProductSerializer, SupplierSerializer
+from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable, ProductGroup, ProductSubGroup, ProductSegment, Product, FinishedProduct, FinishedProductVariant, Supplier
+from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer, ProductGroupSerializer, ProductSubGroupSerializer, ProductSegmentSerializer, ProductSerializer, FinishedProductSerializer, FinishedProductVariantSerializer, SupplierSerializer
 
 
 class UnitViewSet(viewsets.ModelViewSet):
@@ -15,7 +15,7 @@ class UnitViewSet(viewsets.ModelViewSet):
     queryset         = Unit.objects.all()
     serializer_class = UnitSerializer
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_active']
+    filterset_fields = ['is_active', 'unit_type']
     search_fields    = ['name', 'code', 'symbol']
     ordering_fields  = ['name', 'code', 'created_at']
 
@@ -86,7 +86,7 @@ class LocationViewSet(viewsets.ModelViewSet):
     queryset         = Location.objects.select_related('parent').all()
     serializer_class = LocationSerializer
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['type', 'is_active']
+    filterset_fields = ['type', 'is_active', 'parent', 'parent__name']
     search_fields    = ['name', 'short_code']
     ordering_fields  = ['name', 'short_code', 'type']
 
@@ -168,11 +168,42 @@ class ProductSegmentViewSet(viewsets.ModelViewSet):
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all()
+    queryset = Product.objects.select_related('unit').all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'is_available']
+
+
+class FinishedProductViewSet(viewsets.ModelViewSet):
+    queryset = FinishedProduct.objects.select_related(
+        'base_product', 'base_product__unit',
+        'product_group', 'product_segment', 'product_sub_group',
+    ).prefetch_related('variants').all()
+    serializer_class = FinishedProductSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['is_available', 'base_product']
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'is_available']
+
+
+class FinishedProductVariantViewSet(viewsets.ModelViewSet):
+    queryset = FinishedProductVariant.objects.select_related(
+        'finished_product', 'finished_product__base_product', 'finished_product__base_product__unit',
+        'unit', 'volume_unit', 'secondary_unit',
+    ).all()
+    serializer_class = FinishedProductVariantSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['finished_product', 'is_available', 'unit']
+    search_fields = ['finished_product__name', 'sku_code']
+    ordering_fields = ['finished_product__name', 'volume', 'is_available']
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        label = str(instance)
+        self.perform_destroy(instance)
+        return Response({"message": f"Variant '{label}' deleted successfully"}, status=status.HTTP_200_OK)
+
 
 class SupplierViewSet(viewsets.ModelViewSet):
     queryset = Supplier.objects.all().order_by('name')

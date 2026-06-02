@@ -22,6 +22,11 @@ import SalesDashboardPage from './pages/SalesDashboardPage';
 import SalesCustomersPage from './pages/SalesCustomersPage';
 import SalesBillsPage from './pages/SalesBillsPage';
 import KettleLogsPage from './pages/KettleLogsPage';
+import FinishedProductsPage from './pages/FinishedProductsPage';
+import FinishedProductStockPage from './pages/FinishedProductStockPage';
+import FinishedProductMovementPage from './pages/FinishedProductMovementPage';
+import PackagingOrdersPage from './pages/PackagingOrdersPage';
+import AssemblyOrdersPage from './pages/AssemblyOrdersPage';
 
 export const BASE_URL = 'http://localhost:8000/api';
 
@@ -50,6 +55,11 @@ function App() {
         <Route path="/production/storage-tanks" element={<StorageTanksDashboardPage />} />
         <Route path="/production/recipes" element={<ProductRecipePage />} />
         <Route path="/production/kettle-logs" element={<KettleLogsPage />} />
+        <Route path="/packaging/finished-products" element={<FinishedProductsPage />} />
+        <Route path="/packaging/orders" element={<PackagingOrdersPage />} />
+        <Route path="/packaging/finished-product-stock" element={<FinishedProductStockPage />} />
+        <Route path="/packaging/finished-product-logs" element={<FinishedProductMovementPage />} />
+        <Route path="/packaging/assembly" element={<AssemblyOrdersPage />} />
         <Route path="/sales" element={<Navigate to="/sales/dashboard" replace />} />
         <Route path="/sales/dashboard" element={<SalesDashboardPage />} />
         <Route path="/sales/customers" element={<SalesCustomersPage />} />

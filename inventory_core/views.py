@@ -12,7 +12,7 @@ class BatchViewSet(viewsets.ModelViewSet):
     queryset = Batch.objects.all().order_by('-created_at')
     serializer_class = BatchSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['raw_material', 'product', 'batch_type']
+    filterset_fields = ['raw_material', 'product', 'batch_type', 'finished_product_variant', 'finished_product_variant__finished_product']
     search_fields = ['batch_code']
 
     def perform_create(self, serializer):

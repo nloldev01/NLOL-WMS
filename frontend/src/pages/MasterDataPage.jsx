@@ -1,4 +1,4 @@
-import Topbar from '../components/Topbar'
+﻿import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import UnitsTable from '../components/UnitsTable' // or wherever you place it
 import FiscalYearsTable from '../components/FiscalYearsTable'
@@ -36,7 +36,7 @@ const MasterDataPage = () => {
   return (
     <div className="min-h-screen bg-slate-100">
       <Sidebar />
-      <div className="ml-16">
+      <div className="md:ml-16">
         <Topbar />
         <main className="p-6 space-y-4">
 

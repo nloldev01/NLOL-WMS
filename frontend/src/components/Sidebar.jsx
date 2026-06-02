@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 
 import {
   HomeIcon,
-  Cog6ToothIcon,
   DocumentDuplicateIcon,
   CubeIcon,
   ArchiveBoxIcon,
@@ -11,20 +10,26 @@ import {
   CpuChipIcon,
   ShoppingBagIcon,
   ClipboardDocumentListIcon,
-  ExclamationTriangleIcon,
   CreditCardIcon,
-  MapIcon,
   FingerPrintIcon,
-  BeakerIcon,
-  WrenchScrewdriverIcon
+  WrenchScrewdriverIcon,
+  CubeTransparentIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 
 const Sidebar = () => {
   const [expandedItems, setExpandedItems] = useState({})
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setMobileOpen(true)
+    window.addEventListener('sidebar-open', handler)
+    return () => window.removeEventListener('sidebar-open', handler)
+  }, [])
 
   const iconMap = {
     dashboard: HomeIcon,
-    system: Cog6ToothIcon,
     'master-data': DocumentDuplicateIcon,
     'raw-inventories': CubeIcon,
     stocks: ArchiveBoxIcon,
@@ -32,11 +37,10 @@ const Sidebar = () => {
     machines: CpuChipIcon,
     products: ShoppingBagIcon,
     'purchase-orders': ClipboardDocumentListIcon,
-    'system-logs': ExclamationTriangleIcon,
     'counter-sales': CreditCardIcon,
-    // 'inventory-explorer': MapIcon,
     'stock-identity': FingerPrintIcon,
     production: WrenchScrewdriverIcon,
+    packaging: CubeTransparentIcon,
     sales: CreditCardIcon,
   }
 
@@ -47,37 +51,28 @@ const Sidebar = () => {
       path: '/dashboard',
     },
     {
-      id: 'system',
-      label: 'System',
-      children: [
-        { id: 'system-config', label: 'Configuration', path: '/system/config' },
-        { id: 'system-backup', label: 'Backup', path: '/system/backup' },
-        { id: 'system-logs', label: 'Logs', path: '/system/logs' },
-      ],
-    },
-    {
       id: 'master-data',
       label: 'Master Data',
       path: '/master-data'
     },
     {
       id: 'products',
-      label: 'Products',
+      label: 'Base Products',
       path: '/products',
     },
     {
       id: 'stocks',
       label: 'Stocks',
       children: [
-        { id: 'product-stock', label: 'Product Stock', path: '/stock/products' },
+        { id: 'product-stock', label: 'Base Product Stock', path: '/stock/products' },
         { id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stock/raw-materials' },
-        { id: 'product-stock-logs', label: 'Product Stock Logs', path: '/stock/product-logs' },
+        { id: 'product-stock-logs', label: 'Base Product Logs', path: '/stock/product-logs' },
         { id: 'raw-material-stock-logs', label: 'Raw Material Stock Logs', path: '/stock/raw-materials-logs' },
         { id: 'batches', label: 'Batches', path: '/stock/batches' },
         { id: 'inventory-explorer', label: 'Inventory Explorer', path: '/stock/inventory-explorer' },
         { id: 'lpn-finder', label: 'LPN Finder', path: '/stock/lpn-finder' },
       ],
-    },  
+    },
     {
       id: 'users',
       label: 'Users',
@@ -99,6 +94,17 @@ const Sidebar = () => {
       ],
     },
     {
+      id: 'packaging',
+      label: 'Packaging',
+      children: [
+        { id: 'finished-products',      label: 'Finished Products', path: '/packaging/finished-products' },
+        { id: 'packaging-orders',       label: 'Packaging Orders',  path: '/packaging/orders' },
+        { id: 'assembly-orders',        label: 'Assembly',          path: '/packaging/assembly' },
+        { id: 'finished-product-stock', label: 'FP Stock',          path: '/packaging/finished-product-stock' },
+        { id: 'finished-product-logs',  label: 'FP Movements',      path: '/packaging/finished-product-logs' },
+      ],
+    },
+    {
       id: 'sales',
       label: 'Sales',
       children: [
@@ -109,7 +115,6 @@ const Sidebar = () => {
     },
     { id: 'machines', label: 'Machines', path: '/machines' },
     { id: 'purchase-orders', label: 'Purchase Orders', path: '/purchase-orders' },
-    { id: 'system-logs', label: 'System Logs', path: '/system/logs' },
     { id: 'counter-sales', label: 'Counter Sales', path: '/counter-sales' },
   ]
 
@@ -120,12 +125,17 @@ const Sidebar = () => {
     }))
   }
 
+  const closeMobile = () => {
+    setMobileOpen(false)
+    setExpandedItems({})
+  }
+
   const MenuItem = ({ item, isNested = false }) => {
     const hasChildren = item.children && item.children.length > 0
     const isExpanded = expandedItems[item.id]
     const IconComponent = iconMap[item.id]
 
-    const inner = (
+    const desktopInner = (
       <>
         <span className="flex items-center justify-center w-8 h-8 rounded-md flex-shrink-0">
           {IconComponent ? <IconComponent className="w-5 h-5 text-black" /> : <div className="w-5 h-5" />}
@@ -141,31 +151,55 @@ const Sidebar = () => {
       </>
     )
 
-    const baseClass = `flex items-center px-2 py-2 text-sm text-gray-700 
-      hover:bg-[rgba(126,126,126,0.08)] hover:text-gray-900 cursor-pointer 
+    const mobileInner = (
+      <>
+        <span className="flex items-center justify-center w-8 h-8 rounded-md flex-shrink-0">
+          {IconComponent ? <IconComponent className="w-5 h-5 text-black" /> : <div className="w-5 h-5" />}
+        </span>
+        <span className="flex-1 truncate">{item.label}</span>
+        {hasChildren && (
+          <span className={`transition-transform duration-200 text-xs ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+        )}
+      </>
+    )
+
+    const baseClass = `flex items-center px-3 py-2.5 text-sm text-gray-700
+      hover:bg-[rgba(126,126,126,0.08)] hover:text-gray-900 cursor-pointer
       rounded-lg transition-colors duration-150 ${isNested ? 'ml-4' : ''}`
 
     return (
       <>
         <li key={item.id}>
           {item.path && !hasChildren ? (
-            <NavLink
-              to={item.path}
-              className={({ isActive }) =>
-                `${baseClass} ${isActive ? 'bg-orange-50 text-orange-600 font-medium' : ''}`
-              }
-            >
-              {inner}
-            </NavLink>
+            <>
+              <NavLink
+                to={item.path}
+                className={({ isActive }) =>
+                  `${baseClass} hidden md:flex ${isActive ? 'bg-orange-50 text-orange-600 font-medium' : ''}`
+                }
+              >
+                {desktopInner}
+              </NavLink>
+              <NavLink
+                to={item.path}
+                onClick={closeMobile}
+                className={({ isActive }) =>
+                  `${baseClass} flex md:hidden ${isActive ? 'bg-orange-50 text-orange-600 font-medium' : ''}`
+                }
+              >
+                {mobileInner}
+              </NavLink>
+            </>
           ) : (
-            <div className={baseClass} onClick={() => hasChildren && toggleExpand(item.id)}>
-              {inner}
+            <div className={`${baseClass} flex`} onClick={() => hasChildren && toggleExpand(item.id)}>
+              <span className="md:hidden flex items-center gap-2 flex-1">{mobileInner}</span>
+              <span className="hidden md:flex items-center gap-2 flex-1">{desktopInner}</span>
             </div>
           )}
         </li>
 
         {hasChildren && isExpanded && (
-          <ul className="space-y-2">
+          <ul className="space-y-1">
             {item.children.map((child) => (
               <MenuItem key={child.id} item={child} isNested={true} />
             ))}
@@ -183,26 +217,42 @@ const Sidebar = () => {
     <>
       <style>
         {`
-          .sidebar::-webkit-scrollbar {
-            width: 0px;
-          }
-          .sidebar:hover::-webkit-scrollbar {
-            width: 4px;
-          }
-          .sidebar::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          .sidebar::-webkit-scrollbar-thumb {
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 2px;
-          }
-          .sidebar::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 0, 0, 0.3);
-          }
+          .sidebar::-webkit-scrollbar { width: 0px; }
+          .sidebar:hover::-webkit-scrollbar { width: 4px; }
+          .sidebar::-webkit-scrollbar-track { background: transparent; }
+          .sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 2px; }
+          .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
         `}
       </style>
+
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 z-40"
+          onClick={closeMobile}
+        />
+      )}
+
+      {/* Mobile drawer */}
       <aside
-        className="sidebar group fixed left-0 top-0 h-screen w-16 hover:w-64 transition-all duration-300 bg-white border-r border-gray-200 py-5 shadow-sm overflow-y-auto z-40"
+        className={`sidebar md:hidden fixed left-0 top-0 h-screen w-72 bg-white border-r border-gray-200 py-5 shadow-lg overflow-y-auto z-50 transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="flex items-center justify-between mb-6 px-4">
+          <img src="/images/gulf-logo.svg" alt="Logo" className="h-10 w-10" />
+          <button onClick={closeMobile} className="p-1 rounded-lg hover:bg-gray-100" aria-label="Close menu">
+            <XMarkIcon className="w-6 h-6 text-gray-600" />
+          </button>
+        </div>
+        <ul className="space-y-1 px-2">
+          {menuData.map((item) => (
+            <MenuItem key={item.id} item={item} />
+          ))}
+        </ul>
+      </aside>
+
+      {/* Desktop sidebar */}
+      <aside
+        className="sidebar group fixed left-0 top-0 h-screen w-16 hover:w-64 transition-all duration-300 bg-white border-r border-gray-200 py-5 shadow-sm overflow-y-auto z-40 hidden md:block"
         onMouseLeave={handleMouseLeave}
       >
         <div className="flex items-center justify-center mb-6 px-4">

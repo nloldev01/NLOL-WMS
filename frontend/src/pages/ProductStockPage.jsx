@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import { apiFetch } from '../utils/api'
@@ -110,14 +110,14 @@ const ProductStockPage = () => {
   return (
     <div className="min-h-screen bg-slate-100">
       <Sidebar />
-      <div className="ml-16">
+      <div className="md:ml-16">
         <Topbar />
         <main className="p-6">
-          <p className="text-xs text-gray-400 mb-3">Products / Stock</p>
+          <p className="text-xs text-gray-400 mb-3">Base Products / Stock</p>
 
           <div className="rounded-xl bg-white shadow-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">Product Stock Levels</h2>
+              <h2 className="text-base font-semibold text-gray-900">Base Product Stock Levels</h2>
               <div className="flex items-center gap-3">
                 
                 <a
@@ -177,7 +177,7 @@ const ProductStockPage = () => {
                        </div>
 
                       <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Product</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Base Product</label>
                         <select
                           value={filters.product}
                           onChange={e => { setFilters(f => ({ ...f, product: e.target.value, batch: '' })); setPage(1) }}
@@ -232,7 +232,6 @@ const ProductStockPage = () => {
                     <th className="px-6 py-3">Batch / LPN</th>
                     <th className="px-6 py-3">Location</th>
                     <th className="px-6 py-3">Quantity</th>
-                    <th className="px-6 py-3">Capacity</th>
                     <th className="px-6 py-3">Updated</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
@@ -240,7 +239,7 @@ const ProductStockPage = () => {
                 <tbody className="divide-y divide-gray-50">
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-10 text-center text-gray-400">No product stock entries found</td>
+                      <td colSpan={7} className="px-6 py-10 text-center text-gray-400">No base product stock entries found</td>
                     </tr>
                   ) : paginated.map((stock, idx) => (
                     <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
@@ -249,7 +248,7 @@ const ProductStockPage = () => {
                       <td className="px-6 py-3">
                         <div className="flex flex-col gap-0.5">
                           <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-orange-600 bg-orange-50 font-bold border border-orange-100 inline-block w-fit">
-                            {stock.batch_code || '—'}
+                            {stock.batch_code || 'â€"'}
                           </span>
                           {stock.lpn_code && (
                             <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-indigo-600 bg-indigo-50 font-bold border border-indigo-100 inline-block w-fit">
@@ -264,15 +263,8 @@ const ProductStockPage = () => {
                           {parseFloat(stock.quantity).toLocaleString()} {stock.unit || ''}
                         </span>
                       </td>
-                      <td className="px-6 py-3">
-                        {stock.secondary_quantity && stock.secondary_unit ? (
-                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-xs font-medium">
-                            {parseFloat(stock.secondary_quantity).toLocaleString()} {stock.secondary_unit}
-                          </span>
-                        ) : '—'}
-                      </td>
                       <td className="px-6 py-3 text-gray-400 text-xs">
-                        {stock.updated_at ? new Date(stock.updated_at).toLocaleDateString() : '—'}
+                        {stock.updated_at ? new Date(stock.updated_at).toLocaleDateString() : 'â€"'}
                       </td>
                       <td className="px-6 py-3 whitespace-nowrap">
                         <a
@@ -290,14 +282,14 @@ const ProductStockPage = () => {
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
-                Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}â€"{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
               </p>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
                   className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >‹</button>
+                >â€¹</button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                   <button
                     key={p}
@@ -311,7 +303,7 @@ const ProductStockPage = () => {
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                   className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >›</button>
+                >â€º</button>
               </div>
             </div>
           </div>

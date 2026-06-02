@@ -14,8 +14,9 @@ const MOVEMENT_TYPES = [
   { value: 'purchase_return', label: 'Return to Supplier', color: 'bg-red-50 text-red-700' },
   { value: 'transfer_in', label: 'Transfer In', color: 'bg-violet-50 text-violet-700' },
   { value: 'transfer_out', label: 'Transfer Out', color: 'bg-pink-50 text-pink-700' },
-  { value: 'adjustment', label: 'Adjustment', color: 'bg-slate-100 text-slate-600' },
-  { value: 'wastage', label: 'Wastage', color: 'bg-rose-50 text-rose-700' },
+  { value: 'adjustment',      label: 'Adjustment',      color: 'bg-slate-100 text-slate-600' },
+  { value: 'wastage',         label: 'Wastage',          color: 'bg-rose-50 text-rose-700' },
+  { value: 'packaging_usage', label: 'Packaging Usage',  color: 'bg-orange-50 text-orange-700' },
 ]
 
 const MOVEMENT_MAP = Object.fromEntries(MOVEMENT_TYPES.map(m => [m.value, m]))
@@ -490,11 +491,11 @@ const ProductMovementPage = () => {
       <div className="ml-16">
         <Topbar />
         <main className="p-6">
-          <p className="text-xs text-gray-400 mb-3">Products / Product Movements</p>
+          <p className="text-xs text-gray-400 mb-3">Base Product Movements</p>
 
           <div className="rounded-xl bg-white shadow-sm min-h-[500px]">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">Product Movement History</h2>
+              <h2 className="text-base font-semibold text-gray-900">Base Product Movement History</h2>
               <div className="flex items-center gap-3">
                 <button
                   onClick={openAdd}
@@ -627,7 +628,7 @@ const ProductMovementPage = () => {
                 <thead className="bg-primary text-white text-xs uppercase">
                   <tr>
                     <th className="px-6 py-3 w-10">No</th>
-                    <th className="px-6 py-3">Product</th>
+                    <th className="px-6 py-3">Base Product</th>
                     <th className="px-6 py-3">Batch / LPN</th>
                     <th className="px-6 py-3">Movement</th>
                     <th className="px-6 py-3">Quantity</th>
@@ -749,7 +750,7 @@ const ProductMovementPage = () => {
           <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl max-h-[90vh] overflow-y-auto animate-in zoom-in duration-200">
 
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Record Product Movement</h3>
+              <h3 className="text-base font-semibold text-gray-900">Record Base Product Movement</h3>
               <button
                 onClick={closeModal}
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none"
@@ -765,7 +766,7 @@ const ProductMovementPage = () => {
 
                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-6 border-b border-slate-50">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Product *</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Base Product *</label>
                   <select
                     name="product"
                     value={form.product}

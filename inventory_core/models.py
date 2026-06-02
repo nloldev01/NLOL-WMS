@@ -25,6 +25,7 @@ class Batch(models.Model):
     BATCH_TYPE_CHOICES = [
         ('RAW', 'Raw Material'),
         ('PRD', 'Product'),
+        ('FIN', 'Finished Product'),
     ]
 
     batch_code = models.CharField(max_length=50, unique=True)
@@ -42,6 +43,22 @@ class Batch(models.Model):
 
     product = models.ForeignKey(
         'master_data.Product',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='batches'
+    )
+
+    finished_product = models.ForeignKey(
+        'master_data.FinishedProduct',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='batches'
+    )
+
+    finished_product_variant = models.ForeignKey(
+        'master_data.FinishedProductVariant',
         null=True,
         blank=True,
         on_delete=models.PROTECT,

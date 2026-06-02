@@ -5,7 +5,19 @@ const BatchSuccessModal = ({ log, onClose }) => {
   const qrRef = useRef();
   const printRef = useRef();
 
-  if (!log || !log.batch_code) return null;
+  if (!log) return null;
+  if (!log.batch_code && !log.lpn_code) return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl text-center">
+        <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" /></svg>
+        </div>
+        <p className="text-sm font-semibold text-slate-700 mb-1">No batch or LPN available</p>
+        <p className="text-xs text-slate-400 mb-4">This stock entry has no traceable batch. Record a new movement to generate one.</p>
+        <button onClick={onClose} className="px-5 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-700">Close</button>
+      </div>
+    </div>
+  );
 
   const qrData = {
     type: log.lpn_code ? 'lpn' : 'batch',
@@ -128,7 +140,7 @@ const BatchSuccessModal = ({ log, onClose }) => {
         <body>
           <div class="label">
             <div class="label-left">
-              <div class="product-name">${log.product_name || log.material_name}</div>
+              <div class="product-name">${log.product_name || log.finished_product_name || log.material_name}</div>
               <div class="lpn-code">${log.lpn_code || log.batch_code}</div>
               ${log.lpn_code ? `<div class="batch-code">B: ${log.batch_code}</div>` : ''}
               <div class="divider"></div>
@@ -145,6 +157,10 @@ const BatchSuccessModal = ({ log, onClose }) => {
                   <div class="meta-label">Location</div>
                   <div class="meta-value">${log.location_name || ''}</div>
                 </div>
+                ${log.assembly_order_number ? `<div class="meta-item">
+                  <div class="meta-label">Assembly</div>
+                  <div class="meta-value">${log.assembly_order_number}</div>
+                </div>` : ''}
               </div>
             </div>
             <div class="label-right">
@@ -220,7 +236,7 @@ const BatchSuccessModal = ({ log, onClose }) => {
     ctx.font = `700 ${5.5 * SCALE * 1.33}px Helvetica, Arial, sans-serif`;
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    const name = (log.product_name || log.material_name || '').toUpperCase();
+    const name = (log.product_name || log.finished_product_name || log.material_name || '').toUpperCase();
     ctx.fillText(name.length > 28 ? name.slice(0, 28) + '…' : name, padX, padY);
 
     // LPN Code
@@ -326,7 +342,7 @@ const BatchSuccessModal = ({ log, onClose }) => {
             <div className="flex-1 space-y-4">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Item</label>
-                <h4 className="text-base font-bold text-slate-800 leading-tight">{log.product_name || log.material_name}</h4>
+                <h4 className="text-base font-bold text-slate-800 leading-tight">{log.product_name || log.finished_product_name || log.material_name}</h4>
               </div>
 
               <div>
@@ -350,7 +366,7 @@ const BatchSuccessModal = ({ log, onClose }) => {
                 </div>
                 <div className="col-span-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Movement</label>
-                  <p className="text-xs font-bold text-slate-700 capitalize">{log.movement_type.replace('_', ' ')}</p>
+                  <p className="text-xs font-bold capitalize">{log.movement_type ? <span className="text-slate-700">{log.movement_type.replace(/_/g, ' ')}</span> : <span className="text-slate-400 italic">— not recorded —</span>}</p>
                 </div>
                 <div className="col-span-2 space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Movement Path</label>
@@ -367,7 +383,7 @@ const BatchSuccessModal = ({ log, onClose }) => {
                     )}
                     
                     {/* Arrow for transfers */}
-                    {log.movement_type.includes('transfer') && (
+                    {log.movement_type?.includes('transfer') && (
                       <div className="pl-1 py-0.5">
                         <svg className="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -397,6 +413,12 @@ const BatchSuccessModal = ({ log, onClose }) => {
                   <div className="col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Notes</label>
                     <p className="text-xs text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100">{log.notes}</p>
+                  </div>
+                )}
+                {log.assembly_order_number && (
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Assembly Order</label>
+                    <p className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">{log.assembly_order_number}</p>
                   </div>
                 )}
               </div>

@@ -1,14 +1,17 @@
 from rest_framework import serializers
-from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Asset, AssetParameter, ProductGroup, ProductSubGroup, ProductSegment, Product, Supplier
+from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Asset, AssetParameter, ProductGroup, ProductSubGroup, ProductSegment, Product, FinishedProduct, FinishedProductVariant, Supplier
 
 
 # ── Unit ──────────────────────────────────────────────────────────────────────
 
 class UnitSerializer(serializers.ModelSerializer):
+    base_unit_symbol = serializers.ReadOnlyField(source='base_unit.symbol')
+    base_unit_name   = serializers.ReadOnlyField(source='base_unit.name')
+
     class Meta:
         model  = Unit
-        fields = ['id', 'name', 'code', 'symbol', 'description', 'is_active']
-        read_only_fields = ['id']
+        fields = ['id', 'name', 'code', 'symbol', 'unit_type', 'icon', 'base_unit', 'base_unit_symbol', 'base_unit_name', 'description', 'is_active']
+        read_only_fields = ['id', 'base_unit_symbol', 'base_unit_name']
 
     def validate_code(self, value):
         return value.upper().strip()
@@ -162,25 +165,90 @@ class ProductSegmentSerializer(serializers.ModelSerializer):
 # ── Product Serializer ────────────────────────────────────────────────────────
 
 class ProductSerializer(serializers.ModelSerializer):
-    product_group_name = serializers.CharField(source='product_group.name', read_only=True)
-    product_segment_name = serializers.CharField(source='product_segment.name', read_only=True)
-    product_sub_group_name = serializers.CharField(source='product_sub_group.name', read_only=True)
     unit_name = serializers.CharField(source='unit.name', read_only=True)
     unit_symbol = serializers.CharField(source='unit.symbol', read_only=True)
-    secondary_unit_name = serializers.CharField(source='secondary_unit.name', read_only=True)
-    secondary_unit_symbol = serializers.CharField(source='secondary_unit.symbol', read_only=True)
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'description', 'is_available',
+            'unit', 'unit_name', 'unit_symbol',
+        ]
+        read_only_fields = ['id', 'unit_name', 'unit_symbol']
+
+
+# ── Finished Product Serializer ───────────────────────────────────────────────
+
+class FinishedProductSerializer(serializers.ModelSerializer):
+    base_product_name        = serializers.CharField(source='base_product.name', read_only=True)
+    base_product_unit_symbol = serializers.CharField(source='base_product.unit.symbol', read_only=True)
+    product_group_name       = serializers.CharField(source='product_group.name', read_only=True)
+    product_segment_name     = serializers.CharField(source='product_segment.name', read_only=True)
+    product_sub_group_name   = serializers.CharField(source='product_sub_group.name', read_only=True)
+    variant_count            = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FinishedProduct
+        fields = [
+            'id', 'name', 'description', 'is_available',
+            'base_product', 'base_product_name', 'base_product_unit_symbol',
             'product_group', 'product_group_name',
             'product_segment', 'product_segment_name',
             'product_sub_group', 'product_sub_group_name',
-            'unit', 'unit_name', 'unit_symbol',
-            'secondary_unit', 'secondary_unit_name', 'secondary_unit_symbol', 'capacity_value'
+            'variant_count',
         ]
-        read_only_fields = ['id', 'product_group_name', 'product_segment_name', 'product_sub_group_name', 'unit_name', 'unit_symbol', 'secondary_unit_name', 'secondary_unit_symbol']
+        read_only_fields = [
+            'id', 'base_product_name', 'base_product_unit_symbol',
+            'product_group_name', 'product_segment_name', 'product_sub_group_name',
+            'variant_count',
+        ]
+
+    def get_variant_count(self, obj):
+        return obj.variants.count()
+
+
+# ── Finished Product Variant Serializer ──────────────────────────────────────
+
+class FinishedProductVariantSerializer(serializers.ModelSerializer):
+    finished_product_name  = serializers.CharField(source='finished_product.name', read_only=True)
+    unit_name              = serializers.CharField(source='unit.name', read_only=True)
+    unit_symbol            = serializers.CharField(source='unit.symbol', read_only=True)
+    material_display       = serializers.CharField(source='get_material_display', read_only=True)
+    volume_unit_name       = serializers.CharField(source='volume_unit.name', read_only=True)
+    volume_unit_symbol     = serializers.CharField(source='volume_unit.symbol', read_only=True)
+    secondary_unit_name    = serializers.CharField(source='secondary_unit.name', read_only=True)
+    secondary_unit_symbol  = serializers.CharField(source='secondary_unit.symbol', read_only=True)
+    display_label          = serializers.SerializerMethodField()
+    # Expose base_product info so PackagingOrder can show it without extra calls
+    base_product_name      = serializers.CharField(source='finished_product.base_product.name', read_only=True)
+    base_product_unit_symbol = serializers.CharField(source='finished_product.base_product.unit.symbol', read_only=True)
+
+    class Meta:
+        model = FinishedProductVariant
+        fields = [
+            'id', 'finished_product', 'finished_product_name',
+            'base_product_name', 'base_product_unit_symbol',
+            'unit', 'unit_name', 'unit_symbol',
+            'material', 'material_display',
+            'volume', 'volume_unit', 'volume_unit_name', 'volume_unit_symbol',
+            'secondary_unit', 'secondary_unit_name', 'secondary_unit_symbol',
+            'capacity_value', 'base_quantity',
+            'sku_code', 'is_available',
+            'added_sticker', 'sticker_name',
+            'display_label',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'finished_product_name', 'base_product_name', 'base_product_unit_symbol',
+            'unit_name', 'unit_symbol', 'material_display',
+            'volume_unit_name', 'volume_unit_symbol',
+            'secondary_unit_name', 'secondary_unit_symbol',
+            'display_label', 'created_at', 'updated_at',
+        ]
+
+    def get_display_label(self, obj):
+        material = f" ({obj.get_material_display()})" if obj.material else ""
+        return f"{obj.finished_product.name} {obj.volume}{obj.volume_unit.symbol} {obj.unit.name}{material}"
 
 class SupplierSerializer(serializers.ModelSerializer):
     class Meta:

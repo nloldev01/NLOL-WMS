@@ -1,4 +1,4 @@
-import Topbar from '../components/Topbar'
+﻿import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import SalesDashboard from '../components/SalesDashboard'
 
@@ -6,7 +6,7 @@ const SalesDashboardPage = () => {
   return (
     <div className="min-h-screen bg-slate-100">
       <Sidebar />
-      <div className="ml-16">
+      <div className="md:ml-16">
         <Topbar />
         <main className="p-6">
           <div className="rounded-xl bg-white shadow-sm p-6 mb-6">
