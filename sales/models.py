@@ -10,8 +10,9 @@ class Customer(models.Model):
         max_length=20,
         choices=[
             ("industry", "Industry"),
-            ("dealer", "Dealer"),
-            ("no-type", "Not Set"),
+            ("dealer",   "Dealer"),
+            ("retail",   "Retail"),
+            ("no-type",  "Not Set"),
         ],
         default="no-type"
     )

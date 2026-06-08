@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
+from accounts.permissions import ModulePermission
 from .models import Recipe, ProductionOrder, ProductionOrderMaterial
 from .serializers import (
     RecipeSerializer, ProductionOrderSerializer,
@@ -13,6 +14,7 @@ from .serializers import (
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.require('production_recipes')
     queryset = Recipe.objects.all().prefetch_related(
         'items', 'items__material', 'items__material__unit'
     )

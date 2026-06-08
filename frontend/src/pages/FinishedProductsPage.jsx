@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
-import { apiFetch } from '../utils/api'
+import { apiFetch, parseError } from '../utils/api'
 
 const PAGE_SIZE = 10
 
@@ -253,7 +253,7 @@ const FinishedProductsPage = () => {
       if (!res) return
       const data = await res.json()
       if (res.ok) { fetchProducts(); closeProductModal() }
-      else setProductError(Object.values(data).flat()[0] || 'Something went wrong.')
+      else setProductError(parseError(data))
     } catch { setProductError('Network error.') }
     finally { setProductSubmitting(false) }
   }
@@ -329,7 +329,7 @@ const FinishedProductsPage = () => {
         fetchVariants(variantParentId)
         fetchProducts()
         closeVariantModal()
-      } else setVariantError(Object.values(data).flat()[0] || 'Something went wrong.')
+      } else setVariantError(parseError(data))
     } catch { setVariantError('Network error.') }
     finally { setVariantSubmitting(false) }
   }
@@ -363,7 +363,7 @@ const FinishedProductsPage = () => {
     if (res?.ok) {
       const d = await res.json(); setBomLines(prev => [...prev, d]); setNewBomMaterial(''); setNewBomQty('')
     } else {
-      const errData = await res.json(); setBomError(errData.detail || Object.values(errData).flat()[0] || 'Failed to add')
+      const errData = await res.json(); setBomError(parseError(errData))
     }
     setBomSubmitting(false)
   }

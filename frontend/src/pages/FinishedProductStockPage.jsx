@@ -1,37 +1,31 @@
-﻿import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import { apiFetch } from '../utils/api'
-import BatchSuccessModal from '../components/BatchSuccessModal'
 
 const PAGE_SIZE = 10
 
 const FinishedProductStockPage = () => {
-  const [stocks, setStocks]             = useState([])
-  const [finishedProducts, setFinishedProducts] = useState([])
-  const [locations, setLocations]       = useState([])
-  const [filterBatches, setFilterBatches] = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [search, setSearch]             = useState('')
-  const [page, setPage]                 = useState(1)
-  const [error, setError]               = useState('')
-  const [filters, setFilters]           = useState({ location: '', finished_product: '', batch: '' })
-  const [filterOpen, setFilterOpen]     = useState(false)
-  const [labelStock, setLabelStock]     = useState(null)
+  const [stocks, setStocks]       = useState([])
+  const [variants, setVariants]   = useState([])
+  const [locations, setLocations] = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
+  const [page, setPage]           = useState(1)
+  const [filters, setFilters]     = useState({ location: '', finished_product: '', volume: '', unit_type: '' })
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [expandedVariant, setExpandedVariant] = useState(null)
   const filterRef = useRef(null)
 
   useEffect(() => {
-    fetchFinishedProducts()
+    fetchVariants()
     fetchLocations()
   }, [])
 
+  // Only refetch stocks when location filter changes; search/product/size filtered client-side
   useEffect(() => {
     fetchStocks()
-  }, [search, filters])
-
-  useEffect(() => {
-    fetchFilterBatches(filters.finished_product)
-  }, [filters.finished_product])
+  }, [filters.location])
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -46,11 +40,7 @@ const FinishedProductStockPage = () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (search) params.append('search', search)
-      if (filters.location)         params.append('location', filters.location)
-      if (filters.finished_product) params.append('finished_product_variant__finished_product', filters.finished_product)
-      if (filters.batch)            params.append('batch', filters.batch)
-
+      if (filters.location) params.append('location', filters.location)
       const res = await apiFetch(`/products-stock/finished-product-stock/?${params.toString()}`)
       if (res && res.ok) {
         const data = await res.json()
@@ -60,20 +50,19 @@ const FinishedProductStockPage = () => {
       }
     } catch {
       setStocks([])
-      setError('Failed to load finished product stock data')
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchFinishedProducts = async () => {
+  const fetchVariants = async () => {
     try {
-      const res = await apiFetch('/master-data/finished-products/')
+      const res = await apiFetch('/master-data/finished-product-variants/')
       if (res && res.ok) {
         const data = await res.json()
-        setFinishedProducts(Array.isArray(data) ? data : (data.results ?? []))
+        setVariants(Array.isArray(data) ? data : (data.results ?? []))
       }
-    } catch { console.error('Failed to load finished products') }
+    } catch { console.error('Failed to load variants') }
   }
 
   const fetchLocations = async () => {
@@ -86,27 +75,45 @@ const FinishedProductStockPage = () => {
     } catch { console.error('Failed to load locations') }
   }
 
-  const fetchFilterBatches = async (fpid) => {
-    try {
-      let q = '?batch_type=FIN'
-      if (fpid) q += `&finished_product=${fpid}`
-      const res = await apiFetch(`/inventory-core/batches/${q}`)
-      if (res && res.ok) {
-        const data = await res.json()
-        setFilterBatches(Array.isArray(data) ? data : (data.results ?? []))
-      }
-    } catch { console.error('Failed to load filter batches') }
-  }
+  // Build stock map keyed by variant id
+  const stockMap = {}
+  stocks.forEach(s => {
+    const qty = parseFloat(s.quantity) || 0
+    const vid = s.finished_product_variant
+    if (!stockMap[vid]) stockMap[vid] = { total: 0, locations: {}, unit_name: s.unit_name || '' }
+    stockMap[vid].total += qty
+    if (qty > 0) {
+      const loc = s.location_name || 'Unknown'
+      stockMap[vid].locations[loc] = (stockMap[vid].locations[loc] || 0) + qty
+    }
+  })
 
-  const activeFilterCount = Object.values(filters).filter(v => v !== '').length
-  const totalPages = Math.max(1, Math.ceil(stocks.length / PAGE_SIZE))
-  const paginated  = stocks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  // Dynamic filter options derived from variants
+  const volumeOptions  = [...new Set(variants.map(v => `${parseFloat(v.volume)} ${v.volume_unit_symbol}`).filter(Boolean))]
+  const unitOptions    = [...new Set(variants.map(v => v.unit_name).filter(Boolean))]
+  const productOptions = [...new Map(variants.map(v => [String(v.finished_product), v.finished_product_name])).entries()]
 
-  const getStockBadge = (qty) => {
-    if (qty <= 0)  return 'bg-red-50 text-red-600'
-    if (qty < 20)  return 'bg-yellow-50 text-yellow-600'
-    return 'bg-green-50 text-green-600'
-  }
+  // Client-side filtering on variants
+  let displayList = variants
+  if (search)                   displayList = displayList.filter(v => v.display_label?.toLowerCase().includes(search.toLowerCase()))
+  if (filters.finished_product) displayList = displayList.filter(v => String(v.finished_product) === filters.finished_product)
+  if (filters.volume)           displayList = displayList.filter(v => `${parseFloat(v.volume)} ${v.volume_unit_symbol}` === filters.volume)
+  if (filters.unit_type)        displayList = displayList.filter(v => v.unit_name === filters.unit_type)
+
+  // Attach stock data
+  const enriched = displayList.map(v => ({
+    ...v,
+    total: stockMap[v.id]?.total || 0,
+    unit_name: stockMap[v.id]?.unit_name || v.unit_name || '',
+    locations: stockMap[v.id]?.locations || {},
+  }))
+
+  const maxTotal = Math.max(1, ...enriched.map(v => v.total))
+  const activeFilterCount = Object.values(filters).filter(f => f !== '').length
+  const totalPages = Math.max(1, Math.ceil(enriched.length / PAGE_SIZE))
+  const paginated  = enriched.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const toggleExpand = (id) => setExpandedVariant(p => p === id ? null : id)
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -138,8 +145,8 @@ const FinishedProductStockPage = () => {
                   <input
                     value={search}
                     onChange={e => { setSearch(e.target.value); setPage(1) }}
-                    placeholder="Search product or batch..."
-                    className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 w-52"
+                    placeholder="Search variant..."
+                    className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300 w-52"
                   />
                 </div>
 
@@ -148,7 +155,7 @@ const FinishedProductStockPage = () => {
                     onClick={() => setFilterOpen(o => !o)}
                     className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                       activeFilterCount > 0
-                        ? 'border-orange-400 bg-orange-50 text-orange-600'
+                        ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
                         : 'border-gray-300 text-gray-600 hover:bg-gray-50'
                     }`}
                   >
@@ -157,20 +164,20 @@ const FinishedProductStockPage = () => {
                     </svg>
                     Filters
                     {activeFilterCount > 0 && (
-                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] text-white font-semibold">
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] text-white font-semibold">
                         {activeFilterCount}
                       </span>
                     )}
                   </button>
 
                   {filterOpen && (
-                    <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl bg-white border border-gray-200 shadow-lg p-4 space-y-3">
+                    <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-xl bg-white border border-gray-200 shadow-lg p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-semibold text-gray-700">Filters</p>
                         {activeFilterCount > 0 && (
                           <button
-                            onClick={() => { setFilters({ location: '', finished_product: '', batch: '' }); setPage(1) }}
-                            className="text-[10px] text-orange-500 hover:underline"
+                            onClick={() => { setFilters({ location: '', finished_product: '', volume: '', unit_type: '' }); setPage(1) }}
+                            className="text-[10px] text-emerald-600 hover:underline"
                           >
                             Clear all
                           </button>
@@ -178,30 +185,40 @@ const FinishedProductStockPage = () => {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Finished Product</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Product</label>
                         <select
                           value={filters.finished_product}
-                          onChange={e => { setFilters(f => ({ ...f, finished_product: e.target.value, batch: '' })); setPage(1) }}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
+                          onChange={e => { setFilters(f => ({ ...f, finished_product: e.target.value })); setPage(1) }}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
                         >
                           <option value="">All Products</option>
-                          {finishedProducts.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                          {productOptions.map(([id, name]) => (
+                            <option key={id} value={id}>{name}</option>
+                          ))}
                         </select>
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Batch</label>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Size</label>
                         <select
-                          value={filters.batch}
-                          onChange={e => { setFilters(f => ({ ...f, batch: e.target.value })); setPage(1) }}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
+                          value={filters.volume}
+                          onChange={e => { setFilters(f => ({ ...f, volume: e.target.value })); setPage(1) }}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
                         >
-                          <option value="">All Batches</option>
-                          {filterBatches.map(b => (
-                            <option key={b.id} value={String(b.id)}>
-                              {b.batch_code}
-                            </option>
-                          ))}
+                          <option value="">All Sizes</option>
+                          {volumeOptions.map(v => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Unit Type</label>
+                        <select
+                          value={filters.unit_type}
+                          onChange={e => { setFilters(f => ({ ...f, unit_type: e.target.value })); setPage(1) }}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                        >
+                          <option value="">All Types</option>
+                          {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
                         </select>
                       </div>
 
@@ -210,7 +227,7 @@ const FinishedProductStockPage = () => {
                         <select
                           value={filters.location}
                           onChange={e => { setFilters(f => ({ ...f, location: e.target.value })); setPage(1) }}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
                         >
                           <option value="">All Locations</option>
                           {locations.map(l => <option key={l.id} value={String(l.id)}>{l.full_path || l.name}</option>)}
@@ -228,93 +245,130 @@ const FinishedProductStockPage = () => {
               <table className="w-full text-sm text-left">
                 <thead className="bg-primary text-white text-xs uppercase">
                   <tr>
-                    <th className="px-6 py-3 w-10">No</th>
-                    <th className="px-6 py-3">Finished Product</th>
-                    <th className="px-6 py-3">Batch / LPN</th>
-                    <th className="px-6 py-3">Location</th>
-                    <th className="px-6 py-3">Quantity</th>
-                    <th className="px-6 py-3">Volume Equivalent</th>
-                    <th className="px-6 py-3">Updated</th>
+                    <th className="px-4 py-3 w-8"></th>
+                    <th className="px-6 py-3">Variant</th>
+                    <th className="px-6 py-3">Total Stock</th>
+                    <th className="px-6 py-3">Locations</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-10 text-center text-gray-400">No finished product stock entries found</td>
+                      <td colSpan={5} className="px-6 py-10 text-center text-gray-400">No variants found</td>
                     </tr>
-                  ) : paginated.map((stock, idx) => (
-                    <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
-                      <td className="px-6 py-3 font-medium text-gray-900">{stock.finished_product_name}</td>
-                      <td className="px-6 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-orange-600 bg-orange-50 font-bold border border-orange-100 inline-block w-fit">
-                            {stock.batch_code || 'â€”'}
-                          </span>
-                          {stock.lpn_code && (
-                            <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-indigo-600 bg-indigo-50 font-bold border border-indigo-100 inline-block w-fit">
-                              {stock.lpn_code}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-3 text-gray-500">{stock.location_name}</td>
-                      <td className="px-6 py-3">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${getStockBadge(stock.quantity)}`}>
-                          {parseFloat(stock.quantity).toLocaleString()} {stock.volume_unit_symbol} {stock.unit_name}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3">
-                        {stock.secondary_quantity != null && stock.secondary_unit ? (
-                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-xs font-medium">
-                            {parseFloat(stock.secondary_quantity).toLocaleString()} {stock.secondary_unit}
-                          </span>
-                        ) : 'â€”'}
-                      </td>
-                      <td className="px-6 py-3 text-gray-400 text-xs">
-                        {stock.updated_at ? new Date(stock.updated_at).toLocaleDateString() : 'â€”'}
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={`/packaging/finished-product-logs?finished_product_variant=${stock.finished_product_variant}&batch=${stock.batch || ''}`}
-                            className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 inline-block text-center"
-                          >
-                            View Log
-                          </a>
-                          <button
-                            onClick={() => setLabelStock(stock)}
-                            disabled={!stock.lpn_code}
-                            className="rounded-lg bg-orange-500 p-1.5 text-white hover:bg-orange-600 disabled:opacity-30 transition-all shadow-sm"
-                            title={stock.lpn_code ? 'View/Print LPN Label' : 'No LPN on this record'}
-                          >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM13 13h2v2h-2v-2zm2 2h2v2h-2v-2zm2-2h2v2h-2v-2zm2 2h2v2h-2v-2zm-2 2h2v2h-2v-2zm0-4h2v2h-2v-2zm-2 2h2v2h-2v-2z" /></svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  ) : paginated.map(variant => {
+                    const isExpanded = expandedVariant === variant.id
+                    const locEntries = Object.entries(variant.locations).sort((a, b) => b[1] - a[1])
+                    const maxLocQty  = Math.max(1, ...locEntries.map(([, q]) => q))
+
+                    return (
+                      <React.Fragment key={variant.id}>
+                        <tr
+                          onClick={() => toggleExpand(variant.id)}
+                          className={`border-b border-gray-100 cursor-pointer transition-colors ${
+                            isExpanded ? 'bg-emerald-50' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <td className="px-4 py-4 text-center">
+                            <svg
+                              className={`w-3.5 h-3.5 text-gray-400 transition-transform inline-block ${isExpanded ? 'rotate-90' : ''}`}
+                              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="font-semibold text-gray-900 leading-tight">{variant.display_label}</p>
+                            <p className="text-[11px] text-gray-400 mt-0.5">{variant.finished_product_name}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            {variant.total > 0 ? (
+                              <>
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className="text-lg font-bold text-gray-800">{variant.total.toLocaleString()}</span>
+                                  <span className="text-xs text-gray-400">{variant.unit_name}</span>
+                                </div>
+                                <div className="mt-1.5 h-1.5 w-36 rounded-full bg-gray-100">
+                                  <div
+                                    className="h-1.5 rounded-full bg-emerald-400 transition-all"
+                                    style={{ width: `${Math.min(100, (variant.total / maxTotal) * 100)}%` }}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-xs text-gray-300 italic">No stock</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-gray-400">
+                            {locEntries.length > 0
+                              ? `${locEntries.length} location${locEntries.length !== 1 ? 's' : ''}`
+                              : '—'}
+                          </td>
+                          <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                            <a
+                              href={`/packaging/finished-product-logs?finished_product_variant=${variant.id}`}
+                              className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 inline-block"
+                            >
+                              View Log
+                            </a>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="border-b border-gray-100 bg-emerald-50/50">
+                            <td colSpan={5} className="px-8 pb-5 pt-3">
+                              {locEntries.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic">No stock recorded at any location.</p>
+                              ) : (
+                                <>
+                                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                                    Stock by Location
+                                  </p>
+                                  <div className="space-y-2.5 max-w-xl">
+                                    {locEntries.map(([loc, qty]) => (
+                                      <div key={loc} className="flex items-center gap-3">
+                                        <span className="text-xs text-gray-600 w-44 truncate shrink-0" title={loc}>{loc}</span>
+                                        <div className="flex-1 h-2 rounded-full bg-gray-200">
+                                          <div
+                                            className="h-2 rounded-full bg-emerald-400 transition-all"
+                                            style={{ width: `${(qty / maxLocQty) * 100}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-xs font-semibold text-gray-700 w-28 text-right shrink-0">
+                                          {qty.toLocaleString()} <span className="font-normal text-gray-400">{variant.unit_name}</span>
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             )}
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
-                Showing {stocks.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}â€“{Math.min(page * PAGE_SIZE, stocks.length)} of {stocks.length}
+                Showing {enriched.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, enriched.length)} of {enriched.length} variants
               </p>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
                   className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >â€¹</button>
+                >‹</button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                   <button
                     key={p}
                     onClick={() => setPage(p)}
                     className={`w-7 h-7 rounded text-xs font-medium ${
-                      page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
+                      page === p ? 'bg-emerald-500 text-white' : 'text-gray-500 hover:bg-gray-100'
                     }`}
                   >{p}</button>
                 ))}
@@ -322,31 +376,12 @@ const FinishedProductStockPage = () => {
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                   className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >â€º</button>
+                >›</button>
               </div>
             </div>
           </div>
         </main>
       </div>
-      {labelStock && (
-        <BatchSuccessModal
-          log={{
-            batch_code:    labelStock.batch_code,
-            lpn_code:      labelStock.lpn_code,
-            lpn:           labelStock.lpn,
-            batch:         labelStock.batch,
-            finished_product_name: labelStock.finished_product_name,
-            finished_product_variant_label: labelStock.finished_product_variant_label,
-            quantity:      labelStock.quantity,
-            unit:          labelStock.unit,
-            unit_name:     labelStock.unit_name,
-            volume_unit_symbol: labelStock.volume_unit_symbol,
-            location_name: labelStock.location_name,
-            created_at:    labelStock.updated_at,
-          }}
-          onClose={() => setLabelStock(null)}
-        />
-      )}
     </div>
   )
 }

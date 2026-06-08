@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from accounts.models import User, UserRole
+from accounts.models import User, UserRole, SystemModule, RoleModulePermission
 from .serializers import UserSerializer, UserRoleSerializer
 
 auth_logger = logging.getLogger('erp.auth')
@@ -64,11 +64,84 @@ def user_detail(request, pk):
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_2fa(request, pk):
+    if not is_superadmin(request.user):
+        return Response({'error': 'Only superadmin can manage 2FA'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if user.is_2fa_enabled:
+        user.is_2fa_enabled = False
+        user.otp_base32_secret = None
+        user.save(update_fields=['is_2fa_enabled', 'otp_base32_secret'])
+        return Response({'is_2fa_enabled': False, 'message': '2FA disabled'})
+    else:
+        user.is_2fa_enabled = True
+        user.save(update_fields=['is_2fa_enabled'])
+        return Response({'is_2fa_enabled': True, 'message': '2FA enabled — user must set up TOTP on next login'})
+
+
 @api_view(['GET'])
 def role_list(request):
     roles = UserRole.objects.all()
     serializer = UserRoleSerializer(roles, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def system_modules_list(request):
+    modules = SystemModule.objects.all()
+    data = [{'id': m.id, 'key': m.key, 'label': m.label, 'description': m.description, 'sort_order': m.sort_order} for m in modules]
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def role_permissions_list(request):
+    perms = RoleModulePermission.objects.select_related('role', 'module').all()
+    data = [{'id': p.id, 'role': p.role_id, 'role_name': p.role.role, 'module_key': p.module.key, 'access': p.access} for p in perms]
+    return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def role_permissions_bulk_update(request):
+    if not is_superadmin(request.user):
+        return Response({'error': 'Only superadmin can modify permissions'}, status=status.HTTP_403_FORBIDDEN)
+
+    matrix = request.data.get('matrix', {})
+    updated = 0
+    for role_id_str, module_map in matrix.items():
+        try:
+            role = UserRole.objects.get(id=int(role_id_str))
+        except (UserRole.DoesNotExist, ValueError):
+            continue
+        for module_key, access in module_map.items():
+            if access not in ('none', 'view', 'full'):
+                continue
+            try:
+                module = SystemModule.objects.get(key=module_key)
+            except SystemModule.DoesNotExist:
+                continue
+            RoleModulePermission.objects.update_or_create(role=role, module=module, defaults={'access': access})
+            updated += 1
+
+    return Response({'updated': updated})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def role_permissions_reset_defaults(request):
+    if not is_superadmin(request.user):
+        return Response({'error': 'Only superadmin can reset permissions'}, status=status.HTTP_403_FORBIDDEN)
+    from django.core.management import call_command
+    call_command('seed_permissions', reset=True)
+    return Response({'message': 'Permissions reset to defaults'})
 
 
 @api_view(['POST'])

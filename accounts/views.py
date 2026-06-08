@@ -6,10 +6,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
 from django.conf import settings
+from django.http import FileResponse, Http404
+from django.core.management import call_command
 
 import logging
+import os
+import threading
 
-from .models import User
+from .models import User, BackupJob
+from .permissions import get_user_permissions, IsSuperAdmin
 from .otp_utils import generate_otp_secret, get_provisioning_uri, verify_otp_code, generate_qr_code_base64
 
 auth_logger = logging.getLogger('erp.auth')
@@ -58,9 +63,12 @@ def login_view(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # Generate a temporary token for the 2FA step
+    # If 2FA is not enabled for this user, log in directly
+    if not user.is_2fa_enabled:
+        return login_success_response(user, request)
+
+    # 2FA is enabled — generate a temporary token for the verification step
     temp_token = signer.sign(str(user.id))
-    
     return Response({
         'message': '2FA required',
         'is_2fa_enabled': user.is_2fa_enabled,
@@ -167,6 +175,7 @@ def login_success_response(user, request=None):
             'email': user.email,
             'role': user.user_role.role,
             'status': user.status,
+            'permissions': get_user_permissions(user),
         }
     }, status=status.HTTP_200_OK)
 
@@ -192,3 +201,81 @@ def change_password_view(request):
     auth_logger.info(f"Password changed successfully | User: {user.username} | IP: {request.META.get('REMOTE_ADDR')}")
 
     return Response({'message': 'Password changed successfully'}, status=status.HTTP_200_OK)
+
+
+def _serialize_backup_job(job):
+    return {
+        'id':            job.pk,
+        'trigger':       job.trigger,
+        'status':        job.status,
+        'file_name':     job.file_name,
+        'file_size':     job.file_size,
+        'triggered_by':  job.triggered_by.username if job.triggered_by else None,
+        'started_at':    job.started_at,
+        'completed_at':  job.completed_at,
+        'error_message': job.error_message,
+    }
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsSuperAdmin])
+def run_backup(request):
+    job = BackupJob.objects.create(trigger='manual', status='running', triggered_by=request.user)
+
+    def _run():
+        call_command('backup_database', trigger='manual', user_id=request.user.id, job_id=job.id)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return Response(_serialize_backup_job(job), status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsSuperAdmin])
+def backup_list(request):
+    jobs = BackupJob.objects.select_related('triggered_by').all()[:100]
+    return Response([_serialize_backup_job(j) for j in jobs])
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsSuperAdmin])
+def backup_detail(request, pk):
+    try:
+        job = BackupJob.objects.select_related('triggered_by').get(pk=pk)
+    except BackupJob.DoesNotExist:
+        raise Http404
+    return Response(_serialize_backup_job(job))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsSuperAdmin])
+def download_backup(request, pk):
+    try:
+        job = BackupJob.objects.get(pk=pk)
+    except BackupJob.DoesNotExist:
+        raise Http404
+
+    if job.status != 'success' or not job.file_name:
+        return Response({'error': 'This backup is not available for download.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    file_path = os.path.join(settings.BACKUP_DIR, job.file_name)
+    if not os.path.exists(file_path):
+        return Response({'error': 'Backup file is missing on disk.'}, status=status.HTTP_404_NOT_FOUND)
+
+    return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=job.file_name)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, IsSuperAdmin])
+def delete_backup(request, pk):
+    try:
+        job = BackupJob.objects.get(pk=pk)
+    except BackupJob.DoesNotExist:
+        raise Http404
+
+    if job.file_name:
+        file_path = os.path.join(settings.BACKUP_DIR, job.file_name)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    job.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

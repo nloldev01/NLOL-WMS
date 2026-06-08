@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
-import { apiFetch } from '../utils/api'
+import { apiFetch, getApiError } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
+import LabelPrintModal from '../components/LabelPrintModal'
 
 const PAGE_SIZE = 10
 
@@ -20,7 +21,7 @@ const emptyForm = {
   assembly_line: '',
   source_location: '',
   source_batch: '',
-  destination_location: '',
+  destination_location: '27',
   target_quantity: '',
   notes: '',
 }
@@ -57,6 +58,9 @@ const AssemblyOrdersPage = () => {
   const [completeError, setCompleteError]           = useState('')
   const [completeSummary, setCompleteSummary]       = useState(null)
   const [successLog, setSuccessLog]                 = useState(null)
+  const [printJobData, setPrintJobData]             = useState(null)
+  const [actionError, setActionError]               = useState('')
+  const [actionLoading, setActionLoading]           = useState(null)
 
   // Materials modal (add/remove lines on an in_progress order)
   const [materialsOrder, setMaterialsOrder]       = useState(null)
@@ -307,35 +311,62 @@ const AssemblyOrdersPage = () => {
       if (res?.ok) {
         fetchOrders(); setCreateOpen(false); setForm(emptyForm); setBomPreview([])
       } else {
-        const errData = await res.json()
-        setFormError(errData.detail || Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v[0] : v}`).join('; ') || 'Check your inputs')
+        setFormError(await getApiError(res))
       }
-    } catch { setFormError('Connection error') }
+    } catch { setFormError('Connection error — check your network') }
     finally { setSubmitting(false) }
   }
 
   const handleStart = async (order) => {
-    const res = await apiFetch(`/assembly/assembly-orders/${order.id}/start/`, { method: 'POST' })
-    if (res?.ok) fetchOrders()
+    setActionError(''); setActionLoading(order.id)
+    try {
+      const res = await apiFetch(`/assembly/assembly-orders/${order.id}/start/`, { method: 'POST' })
+      if (res?.ok) fetchOrders()
+      else setActionError(await getApiError(res))
+    } catch { setActionError('Connection error — check your network') }
+    finally { setActionLoading(null) }
   }
 
   const handleLabel = async (order) => {
-    const res = await apiFetch(`/assembly/assembly-orders/${order.id}/label/`, { method: 'POST' })
-    if (res?.ok) {
-      const data = await res.json()
-      fetchOrders()
-      fetchProductionQueue()
-      if (data.batch_code || data.lpn_code) setSuccessLog(data)
-    } else {
-      const errData = await res.json().catch(() => ({}))
-      alert(errData.detail || 'Labeling failed')
-    }
+    setActionError(''); setActionLoading(order.id)
+    try {
+      const res = await apiFetch(`/assembly/assembly-orders/${order.id}/label/`, { method: 'POST' })
+      if (res?.ok) {
+        const data = await res.json()
+        fetchOrders()
+        fetchProductionQueue()
+        // Generate print job and open label print modal
+        const jobRes = await apiFetch(`/assembly/assembly-orders/${order.id}/generate-labels/`, { method: 'POST' })
+        if (jobRes?.ok) {
+          const jobData = await jobRes.json()
+          setPrintJobData(jobData)
+        } else if (data.batch_code || data.lpn_code) {
+          setSuccessLog(data)
+        }
+      } else setActionError(await getApiError(res))
+    } catch { setActionError('Connection error — check your network') }
+    finally { setActionLoading(null) }
+  }
+
+  const handlePrintLabels = async (order) => {
+    setActionError(''); setActionLoading(order.id)
+    try {
+      const jobRes = await apiFetch(`/assembly/assembly-orders/${order.id}/generate-labels/`, { method: 'POST' })
+      if (jobRes?.ok) setPrintJobData(await jobRes.json())
+      else setActionError(await getApiError(jobRes))
+    } catch { setActionError('Connection error — check your network') }
+    finally { setActionLoading(null) }
   }
 
   const handleCancel = async (order) => {
     if (!window.confirm(`Cancel assembly order ${order.assembly_number}?`)) return
-    const res = await apiFetch(`/assembly/assembly-orders/${order.id}/cancel/`, { method: 'POST' })
-    if (res?.ok) fetchOrders()
+    setActionError(''); setActionLoading(order.id)
+    try {
+      const res = await apiFetch(`/assembly/assembly-orders/${order.id}/cancel/`, { method: 'POST' })
+      if (res?.ok) fetchOrders()
+      else setActionError(await getApiError(res))
+    } catch { setActionError('Connection error — check your network') }
+    finally { setActionLoading(null) }
   }
 
   const openCompleteModal = (order) => {
@@ -365,11 +396,8 @@ const AssemblyOrdersPage = () => {
         fetchProductionQueue()
         setCompleteTarget(null)
         setCompleteSummary(data)
-      } else {
-        const errData = await res.json()
-        setCompleteError(errData.detail || errData.error || 'Failed to complete assembly')
-      }
-    } catch { setCompleteError('Connection error') }
+      } else setCompleteError(await getApiError(res))
+    } catch { setCompleteError('Connection error — check your network') }
     finally { setCompleting(false) }
   }
 
@@ -545,6 +573,13 @@ const AssemblyOrdersPage = () => {
               </div>
             </div>
 
+            {actionError && (
+              <div className="mx-6 mt-4 flex items-center justify-between gap-3 rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">
+                <span>{actionError}</span>
+                <button onClick={() => setActionError('')} className="text-red-400 hover:text-red-600 text-lg leading-none flex-shrink-0">×</button>
+              </div>
+            )}
+
             {loading ? (
               <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
             ) : (
@@ -622,17 +657,26 @@ const AssemblyOrdersPage = () => {
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             {order.status === 'draft' && (
-                              <button onClick={() => handleStart(order)} className="rounded-md bg-blue-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-blue-600">Start</button>
+                              <button onClick={() => handleStart(order)} disabled={actionLoading === order.id} className="rounded-md bg-blue-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-blue-600 disabled:opacity-50">
+                                {actionLoading === order.id ? '…' : 'Start'}
+                              </button>
                             )}
                             {order.status === 'in_progress' && (<>
                               <button onClick={() => openMaterialsModal(order)} className="rounded-md bg-indigo-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-indigo-600">Materials</button>
                               <button onClick={() => openCompleteModal(order)} className="rounded-md bg-teal-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-teal-600">Mark Assembled</button>
                             </>)}
                             {order.status === 'assembled' && (
-                              <button onClick={() => handleLabel(order)} className="rounded-md bg-orange-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-orange-600">Add Labels</button>
+                              <button onClick={() => handleLabel(order)} disabled={actionLoading === order.id} className="rounded-md bg-orange-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-orange-600 disabled:opacity-50">
+                                {actionLoading === order.id ? 'Labeling…' : 'Add Labels'}
+                              </button>
+                            )}
+                            {order.status === 'completed' && order.produced_batch_code && (
+                              <button onClick={() => handlePrintLabels(order)} disabled={actionLoading === order.id} className="rounded-md bg-slate-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-slate-700 disabled:opacity-50">
+                                {actionLoading === order.id ? '…' : 'Print Stickers'}
+                              </button>
                             )}
                             {order.status !== 'completed' && order.status !== 'cancelled' && order.status !== 'assembled' && (
-                              <button onClick={() => handleCancel(order)} className="rounded-md bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 hover:bg-red-100">Cancel</button>
+                              <button onClick={() => handleCancel(order)} disabled={actionLoading === order.id} className="rounded-md bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 hover:bg-red-100 disabled:opacity-50">Cancel</button>
                             )}
                           </div>
                         </td>
@@ -718,7 +762,11 @@ const AssemblyOrdersPage = () => {
                     </span>
                     <span className="text-teal-500">@</span>
                     <span className="text-teal-700 font-medium">
-                      {locations.find(l => String(l.id) === String(form.source_location))?.name || `Location #${form.source_location}`}
+                      {
+                        locations.find(l => String(l.id) === String(form.source_location))?.name ||
+                        assemblyLines.find(l => String(l.id) === String(form.source_location))?.name ||
+                        `Location #${form.source_location}`
+                      }
                     </span>
                   </div>
                   <button
@@ -777,9 +825,9 @@ const AssemblyOrdersPage = () => {
               {/* Destination Location — always visible */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Destination Location *</label>
-                <select name="destination_location" value={form.destination_location} onChange={handleFormChange} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none">
-                  <option value="">Where finished product goes after assembly</option>
-                  {locations.map(l => <option key={l.id} value={l.id}>{l.full_path || l.name}</option>)}
+                <select name="destination_location" value={form.destination_location} disabled className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500 cursor-not-allowed outline-none">
+                  <option value="">—</option>
+                  {locations.map(l => <option key={l.id} value={String(l.id)}>{l.full_path || l.name}</option>)}
                 </select>
               </div>
 
@@ -1011,6 +1059,13 @@ const AssemblyOrdersPage = () => {
         <BatchSuccessModal
           log={successLog}
           onClose={() => setSuccessLog(null)}
+        />
+      )}
+
+      {printJobData && (
+        <LabelPrintModal
+          data={printJobData}
+          onClose={() => setPrintJobData(null)}
         />
       )}
     </div>

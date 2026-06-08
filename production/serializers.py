@@ -2,8 +2,30 @@ from rest_framework import serializers
 from .models import Recipe, RecipeItem, ProductionOrder, ProductionOrderMaterial
     
 class RecipeItemSerializer(serializers.ModelSerializer):
-    material_name = serializers.CharField(source='material.name', read_only=True)
-    unit_symbol = serializers.CharField(source='material.unit.symbol', read_only=True)
+    # Read: use the encrypted-then-decrypted cached name (never expose material FK id)
+    material_name = serializers.SerializerMethodField()
+    unit_symbol   = serializers.CharField(source='material.unit.symbol', read_only=True)
+
+    def get_material_name(self, obj):
+        # Prefer the encrypted cache; fall back to live FK lookup
+        if obj.encrypted_material_name:
+            return obj.encrypted_material_name  # EncryptedTextField decrypts on read
+        return obj.material.name if obj.material_id else ''
+
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        # Populate encrypted name cache after save
+        if instance.material_id:
+            instance.encrypted_material_name = instance.material.name
+            instance.save(update_fields=['encrypted_material_name'])
+        return instance
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        if instance.material_id:
+            instance.encrypted_material_name = instance.material.name
+            instance.save(update_fields=['encrypted_material_name'])
+        return instance
 
     class Meta:
         model = RecipeItem

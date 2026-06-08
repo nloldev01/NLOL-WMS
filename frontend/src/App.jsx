@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import UserPage from './pages/UserPage';
@@ -27,51 +28,77 @@ import FinishedProductStockPage from './pages/FinishedProductStockPage';
 import FinishedProductMovementPage from './pages/FinishedProductMovementPage';
 import PackagingOrdersPage from './pages/PackagingOrdersPage';
 import AssemblyOrdersPage from './pages/AssemblyOrdersPage';
+import RolesPermissionsPage from './pages/RolesPermissionsPage';
+import BackupRestorePage from './pages/BackupRestorePage';
 
 export const BASE_URL = 'http://localhost:8000/api';
+
+const PR = ({ module, minAccess, children }) => (
+  <ProtectedRoute module={module} minAccess={minAccess}>{children}</ProtectedRoute>
+)
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Core Routes */}
+        {/* Public */}
         <Route path="/" element={<LoginPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/users" element={<UserPage />} />
-        <Route path="/change-password" element={<ChangePasswordPage />} />
-        <Route path="/master-data" element={<MasterDataPage />} />
-        <Route path="/products" element={<ProductPage />} />
-        <Route path="/stock/raw-materials" element={<RawMaterialStockPage />} />
-        <Route path="/stock/raw-materials-logs" element={<StockMovementPage />} />
-        <Route path="/stock/products" element={<ProductStockPage />} />
-        <Route path="/stock/product-logs" element={<ProductMovementPage />} />
-        <Route path="/stock/batches" element={<BatchesPage />} />
-        <Route path="/stock/inventory-explorer" element={<InventoryExplorerPage />} />
-        <Route path="/stock/lpn-finder" element={<LPNFinderPage />} />
-        <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
-        <Route path="/production/kettles" element={<KettlesDashboardPage />} />
-        <Route path="/production/vertical-tanks" element={<VerticalTanksDashboardPage />} />
-        <Route path="/production/storage-tanks" element={<StorageTanksDashboardPage />} />
-        <Route path="/production/recipes" element={<ProductRecipePage />} />
-        <Route path="/production/kettle-logs" element={<KettleLogsPage />} />
-        <Route path="/packaging/finished-products" element={<FinishedProductsPage />} />
-        <Route path="/packaging/orders" element={<PackagingOrdersPage />} />
-        <Route path="/packaging/finished-product-stock" element={<FinishedProductStockPage />} />
-        <Route path="/packaging/finished-product-logs" element={<FinishedProductMovementPage />} />
-        <Route path="/packaging/assembly" element={<AssemblyOrdersPage />} />
-        <Route path="/sales" element={<Navigate to="/sales/dashboard" replace />} />
-        <Route path="/sales/dashboard" element={<SalesDashboardPage />} />
-        <Route path="/sales/customers" element={<SalesCustomersPage />} />
-        <Route path="/sales/bills" element={<SalesBillsPage />} />
+        <Route path="/change-password" element={<PR>{<ChangePasswordPage />}</PR>} />
 
-        {/* Error Pages */}
+        {/* Dashboard — all authenticated users */}
+        <Route path="/dashboard" element={<PR module="dashboard"><DashboardPage /></PR>} />
+
+        {/* User management — superadmin only */}
+        <Route path="/users"       element={<PR module="users"><UserPage /></PR>} />
+        <Route path="/users/roles" element={<PR module="users"><RolesPermissionsPage /></PR>} />
+
+        {/* System — superadmin only (gated inside the page) */}
+        <Route path="/system/backups" element={<PR><BackupRestorePage /></PR>} />
+
+        {/* Master data */}
+        <Route path="/master-data" element={<PR module="master_data"><MasterDataPage /></PR>} />
+        <Route path="/products"    element={<PR module="master_data"><ProductPage /></PR>} />
+
+        {/* Raw material stock */}
+        <Route path="/stock/raw-materials"      element={<PR module="raw_material_stock"><RawMaterialStockPage /></PR>} />
+        <Route path="/stock/raw-materials-logs" element={<PR module="raw_material_stock"><StockMovementPage /></PR>} />
+
+        {/* Base product stock */}
+        <Route path="/stock/products"    element={<PR module="base_product_stock"><ProductStockPage /></PR>} />
+        <Route path="/stock/product-logs" element={<PR module="base_product_stock"><ProductMovementPage /></PR>} />
+
+        {/* Inventory tools */}
+        <Route path="/stock/batches"            element={<PR module="inventory_tools"><BatchesPage /></PR>} />
+        <Route path="/stock/inventory-explorer" element={<PR module="inventory_tools"><InventoryExplorerPage /></PR>} />
+        <Route path="/stock/lpn-finder"         element={<PR module="inventory_tools"><LPNFinderPage /></PR>} />
+
+        {/* Production */}
+        <Route path="/production/dashboard"     element={<PR module="production"><ProductionDashboardPage /></PR>} />
+        <Route path="/production/kettles"       element={<PR module="production"><KettlesDashboardPage /></PR>} />
+        <Route path="/production/vertical-tanks" element={<PR module="production"><VerticalTanksDashboardPage /></PR>} />
+        <Route path="/production/storage-tanks" element={<PR module="production"><StorageTanksDashboardPage /></PR>} />
+        <Route path="/production/recipes"       element={<PR module="production_recipes"><ProductRecipePage /></PR>} />
+        <Route path="/production/kettle-logs"   element={<PR module="production"><KettleLogsPage /></PR>} />
+
+        {/* Packaging / Finished products */}
+        <Route path="/packaging/finished-products"      element={<PR module="packaging"><FinishedProductsPage /></PR>} />
+        <Route path="/packaging/orders"                 element={<PR module="packaging"><PackagingOrdersPage /></PR>} />
+        <Route path="/packaging/assembly"               element={<PR module="assembly"><AssemblyOrdersPage /></PR>} />
+        <Route path="/packaging/finished-product-stock" element={<PR module="finished_product_stock"><FinishedProductStockPage /></PR>} />
+        <Route path="/packaging/finished-product-logs"  element={<PR module="finished_product_stock"><FinishedProductMovementPage /></PR>} />
+
+        {/* Sales */}
+        <Route path="/sales" element={<Navigate to="/sales/dashboard" replace />} />
+        <Route path="/sales/dashboard"  element={<PR module="sales"><SalesDashboardPage /></PR>} />
+        <Route path="/sales/customers"  element={<PR module="sales"><SalesCustomersPage /></PR>} />
+        <Route path="/sales/bills"      element={<PR module="sales"><SalesBillsPage /></PR>} />
+
+        {/* Error pages */}
         <Route path="/403" element={<ErrorPage type="403" />} />
         <Route path="/404" element={<ErrorPage type="404" />} />
         <Route path="/500" element={<ErrorPage type="500" />} />
-
-        {/* Catch-all route redirects to 404 */}
-        <Route path="*" element={<Navigate to="/404" replace />} />
+        <Route path="*"    element={<Navigate to="/404" replace />} />
       </Routes>
     </BrowserRouter>
   );

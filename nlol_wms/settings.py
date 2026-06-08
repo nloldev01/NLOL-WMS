@@ -22,6 +22,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-v8yx^q12(4=5o1%@0ak7$kvlp)xhryf_g&@f3^!#__%z529-56'
 
+# Fernet key for recipe field encryption — rotate this key to re-encrypt all recipes
+RECIPE_ENCRYPTION_KEY = 'Y2A7PhUj6pjRMXkZtWV1nINbKlhnzwByo7lTo0RHyhs='
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -99,6 +102,10 @@ DATABASES = {
         'PORT': '5432',
     }
 }
+
+# Database backups (see accounts/management/commands/backup_database.py)
+BACKUP_DIR = BASE_DIR / 'backups'
+BACKUP_RETENTION_COUNT = 14
 
 
 # Password validation

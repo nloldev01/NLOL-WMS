@@ -1,3 +1,4 @@
+import uuid
 from django.db import models, transaction
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -170,12 +171,17 @@ class AssemblyOrder(models.Model):
         from raw_materials_stock.models import RawMaterialStockLog
 
         variant = self.finished_product_variant
-        dest = destination_location or self.destination_location
+        # Destination = assembly zone (parent of the assembly line), not the line itself
+        _zone = None
+        if self.assembly_line and self.assembly_line.parent_id:
+            _zone = self.assembly_line.parent
+        elif self.assembly_line:
+            _zone = self.assembly_line
+        dest = destination_location or self.destination_location or _zone
 
         if not dest:
             raise ValidationError(
-                "Destination location is required to complete assembly. "
-                "Select where the filled product will be stored."
+                "Cannot complete assembly: no assembly line set on this order."
             )
 
         # 1. Deduct base product stock (best-effort — non-blocking, but visible on failure)
@@ -273,3 +279,20 @@ class AssemblyOrder(models.Model):
         self.performed_by = performed_by
         self.save()
         return deductions, base_deducted, base_deduct_note
+
+
+class LabelPrintJob(models.Model):
+    assembly_order = models.ForeignKey(AssemblyOrder, on_delete=models.CASCADE, related_name='print_jobs')
+    lpn            = models.ForeignKey('inventory_core.LPN', on_delete=models.SET_NULL, null=True, blank=True)
+    batch          = models.ForeignKey('inventory_core.Batch', on_delete=models.SET_NULL, null=True, blank=True)
+    quantity       = models.PositiveIntegerField()
+    redeem_code    = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    printed_by     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'assembly_label_print_jobs'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"PrintJob #{self.pk} — {self.assembly_order.assembly_number} × {self.quantity}"

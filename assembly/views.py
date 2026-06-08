@@ -123,6 +123,51 @@ class AssemblyOrderViewSet(viewsets.ModelViewSet):
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='generate-labels')
+    def generate_labels(self, request, pk=None):
+        """Create a LabelPrintJob for this order and return all data needed to print labels."""
+        order = self.get_object()
+        if order.status not in ('assembled', 'completed'):
+            return Response({'detail': 'Order must be assembled or completed to print labels.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .models import LabelPrintJob
+        lpn   = None
+        batch = None
+
+        if order.produced_batch:
+            batch = order.produced_batch
+            from inventory_core.models import LPN
+            lpn = LPN.objects.filter(batch=batch).order_by('-created_at').first()
+
+        job = LabelPrintJob.objects.create(
+            assembly_order=order,
+            lpn=lpn,
+            batch=batch,
+            quantity=int(order.actual_quantity or order.target_quantity),
+            printed_by=request.user,
+        )
+
+        variant = order.finished_product_variant
+
+        def build_variant_label(v):
+            if not v:
+                return None
+            material = f" ({v.get_material_display()})" if v.material else ""
+            return f"{v.finished_product.name} {v.volume}{v.volume_unit.symbol} {v.unit.name}{material}"
+
+        return Response({
+            'job_id':          job.pk,
+            'redeem_code':     str(job.redeem_code),
+            'batch_code':      batch.batch_code if batch else None,
+            'lpn_code':        lpn.lpn_code if lpn else None,
+            'product_name':    variant.finished_product.name if variant else None,
+            'variant_label':   build_variant_label(variant),
+            'quantity':        job.quantity,
+            'unit_name':       variant.unit.name if variant and variant.unit else '',
+            'location_name':   order.destination_location.get_full_path() if order.destination_location else '',
+            'produced_at':     (order.updated_at or order.created_at).strftime('%d %b %Y'),
+        }, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='cancel')
     def cancel(self, request, pk=None):
         order = self.get_object()

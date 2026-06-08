@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
-import { apiFetch } from '../utils/api'
+import { apiFetch, getApiError } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
 
 const PAGE_SIZE = 10
@@ -43,15 +43,23 @@ const QuickPickSuggestions = ({ suggestions, onPick }) => {
   if (!suggestions.length) return null
   return (
     <div>
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Available Stock (Quick Pick)</p>
-      <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-2">
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Available Stock — Click to Select</p>
+      <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2">
         {suggestions.map((item, idx) => (
-          <button key={idx} onClick={() => onPick(item)} className="flex flex-col text-left p-2 rounded-lg border border-slate-200 bg-white hover:border-orange-300 hover:bg-orange-50/50 transition-all group relative overflow-hidden">
-            <div className="flex items-center justify-between mb-0.5">
-              <span className="text-[10px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 rounded border border-orange-100">{item.batch_code || 'No Batch'}</span>
-              <span className="text-xs font-bold text-slate-700">{parseFloat(item.quantity).toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">{item.volume_unit_symbol} {item.unit_name}</span></span>
+          <button key={idx} onClick={() => onPick(item)} className="flex flex-col text-left p-2.5 rounded-lg border border-slate-200 bg-white hover:border-orange-300 hover:bg-orange-50/50 transition-all group">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-semibold text-indigo-700 truncate mr-2">
+                {item.finished_product_variant_label || item.finished_product_name}
+              </span>
+              <span className="text-xs font-bold text-slate-700 shrink-0">
+                {parseFloat(item.quantity).toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">{item.volume_unit_symbol}{item.unit_name}</span>
+              </span>
             </div>
-            <div className="text-[10px] font-medium text-slate-500 truncate group-hover:text-slate-700 transition-colors">{item.location_name}</div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] font-mono font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">{item.batch_code || 'No Batch'}</span>
+              {item.lpn_code && <span className="text-[9px] font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{item.lpn_code}</span>}
+              <span className="text-[10px] text-slate-400 group-hover:text-slate-600 truncate">{item.location_name}</span>
+            </div>
           </button>
         ))}
       </div>
@@ -126,18 +134,18 @@ const FinishedProductMovementPage = () => {
         .then(r => r?.ok ? r.json() : null)
         .then(d => { d && setVariants(Array.isArray(d) ? d : (d.results ?? [])); setVariantsLoading(false) })
         .catch(() => setVariantsLoading(false))
+      fetchStockForProduct(form.finished_product)
     } else {
       setVariants([])
+      setAvailableStock([])
     }
     setForm(prev => ({ ...prev, finished_product_variant: '' }))
   }, [form.finished_product])
 
   useEffect(() => {
     if (form.finished_product_variant) {
-      fetchAvailableStock(form.finished_product_variant)
       fetchBatches(form.finished_product_variant)
     } else {
-      setAvailableStock([])
       setBatches([])
     }
   }, [form.finished_product_variant])
@@ -189,10 +197,10 @@ const FinishedProductMovementPage = () => {
     if (res && res.ok) { const data = await res.json(); setFilterBatches(Array.isArray(data) ? data : (data.results ?? [])) }
   }
 
-  const fetchAvailableStock = async (variantId) => {
+  const fetchStockForProduct = async (fpid) => {
     setFetchingStock(true)
     try {
-      const res = await apiFetch(`/products-stock/finished-product-stock/?finished_product_variant=${variantId}`)
+      const res = await apiFetch(`/products-stock/finished-product-stock/?finished_product_variant__finished_product=${fpid}`)
       if (res && res.ok) {
         const data = await res.json()
         const items = Array.isArray(data) ? data : (data.results ?? [])
@@ -220,6 +228,7 @@ const FinishedProductMovementPage = () => {
   const handlePick = (item) => {
     setForm(prev => ({
       ...prev,
+      finished_product_variant: String(item.finished_product_variant),
       [prev.movement_type === 'transfer_in' ? 'counterpart_location' : 'location']: item.location,
       batch: item.batch, lpn: item.lpn, quantity: item.quantity,
       auto_generate_batch: false, auto_generate_lpn: false,
@@ -263,16 +272,8 @@ const FinishedProductMovementPage = () => {
         fetchLogs()
         if (data.batch_code || data.lpn_code) setSuccessLog(data)
         else closeModal()
-      } else {
-        const errData = await res.json()
-        const msg = errData.error || errData.detail
-          || (errData.quantity && errData.quantity[0])
-          || (errData.counterpart_location && errData.counterpart_location[0])
-          || Object.values(errData).flat().join('; ')
-          || 'Check your inputs'
-        setError(msg)
-      }
-    } catch { setError('Connection error') }
+      } else setError(await getApiError(res))
+    } catch { setError('Connection error — check your network') }
     finally { setSubmitting(false) }
   }
 
@@ -370,6 +371,7 @@ const FinishedProductMovementPage = () => {
                     <th className="px-6 py-3">Location / Path</th>
                     <th className="px-6 py-3">Balance</th>
                     <th className="px-6 py-3">Date Recorded</th>
+                    <th className="px-6 py-3">By</th>
                     <th className="px-6 py-3">Label</th>
                   </tr>
                 </thead>
@@ -432,6 +434,11 @@ const FinishedProductMovementPage = () => {
                           {parseFloat(log.balance_after).toLocaleString()} <span className="text-[10px] font-normal text-gray-400">{log.volume_unit_symbol} {log.unit_name}</span>
                         </td>
                         <td className="px-6 py-3 text-gray-400 text-xs">{new Date(log.created_at).toLocaleDateString()}</td>
+                        <td className="px-6 py-3">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                            {log.performer_name || '—'}
+                          </span>
+                        </td>
                         <td className="px-6 py-3">
                           <button onClick={() => setSuccessLog(log)} disabled={!log.batch_code && !log.lpn_code} className="rounded-lg bg-orange-500 p-1.5 text-white hover:bg-orange-600 disabled:opacity-30 transition-all shadow-sm" title={log.lpn_code ? 'View/Print LPN Label' : log.batch_code ? 'View Batch QR' : 'No label available'}>
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM13 13h2v2h-2v-2zm2 2h2v2h-2v-2zm2-2h2v2h-2v-2zm2 2h2v2h-2v-2zm-2 2h2v2h-2v-2zm0-4h2v2h-2v-2zm-2 2h2v2h-2v-2z" /></svg>
@@ -531,13 +538,11 @@ const FinishedProductMovementPage = () => {
                 {fetchingStock ? (
                   <div className="col-span-2 p-4 text-center border-2 border-dashed border-slate-100 rounded-xl">
                     <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Checking inventory...</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loading stock...</p>
                   </div>
-                ) : (
-                  availableStock.length > 0 && isOutbound && (
-                    <div className="col-span-2"><QuickPickSuggestions suggestions={availableStock} onPick={handlePick} /></div>
-                  )
-                )}
+                ) : availableStock.length > 0 ? (
+                  <div className="col-span-2"><QuickPickSuggestions suggestions={availableStock} onPick={handlePick} /></div>
+                ) : null}
 
                 <div className="col-span-2">
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Batch / LPN</label>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
-import { apiFetch } from '../utils/api'
+import { apiFetch, parseError } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
 
 const PAGE_SIZE = 10
@@ -469,16 +469,7 @@ const ProductMovementPage = () => {
         } else {
           closeModal()
         }
-      } else {
-        const errData = await res.json()
-        // Handle various DRF error formats
-        const msg = errData.error || errData.detail
-          || (errData.quantity && errData.quantity[0])
-          || (errData.counterpart_location && errData.counterpart_location[0])
-          || Object.values(errData).flat().join('; ')
-          || 'Check your inputs'
-        setError(msg)
-      }
+      } else setError(parseError(await res.json().catch(() => ({}))))
     } catch { setError('Connection error') }
     finally { setSubmitting(false) }
   }
@@ -635,6 +626,7 @@ const ProductMovementPage = () => {
                     <th className="px-6 py-3">Location / Path</th>
                     <th className="px-6 py-3">Balance</th>
                     <th className="px-6 py-3">Date Recorded</th>
+                    <th className="px-6 py-3">By</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
                 </thead>
@@ -695,6 +687,11 @@ const ProductMovementPage = () => {
                           </td>
                           <td className="px-6 py-3 text-gray-400 text-xs">
                             {new Date(log.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-3">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                              {log.performer_name || '—'}
+                            </span>
                           </td>
                           <td className="px-6 py-3">
                             <button

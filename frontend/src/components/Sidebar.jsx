@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
+import { hasAccess, getUserRole } from '../utils/api'
 
 import {
   HomeIcon,
@@ -16,6 +17,7 @@ import {
   CubeTransparentIcon,
   Bars3Icon,
   XMarkIcon,
+  CircleStackIcon,
 } from '@heroicons/react/24/outline'
 
 const Sidebar = () => {
@@ -42,6 +44,7 @@ const Sidebar = () => {
     production: WrenchScrewdriverIcon,
     packaging: CubeTransparentIcon,
     sales: CreditCardIcon,
+    system: CircleStackIcon,
   }
 
   const menuData = [
@@ -50,38 +53,32 @@ const Sidebar = () => {
       label: 'Dashboard',
       path: '/dashboard',
     },
-    {
-      id: 'master-data',
-      label: 'Master Data',
-      path: '/master-data'
-    },
-    {
-      id: 'products',
-      label: 'Base Products',
-      path: '/products',
-    },
-    {
+    ...(hasAccess('master_data') ? [
+      { id: 'master-data', label: 'Master Data', path: '/master-data' },
+      { id: 'products',    label: 'Base Products', path: '/products' },
+    ] : []),
+    ...(hasAccess('raw_material_stock') || hasAccess('base_product_stock') || hasAccess('inventory_tools') ? [{
       id: 'stocks',
       label: 'Stocks',
       children: [
-        { id: 'product-stock', label: 'Base Product Stock', path: '/stock/products' },
-        { id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stock/raw-materials' },
-        { id: 'product-stock-logs', label: 'Base Product Logs', path: '/stock/product-logs' },
-        { id: 'raw-material-stock-logs', label: 'Raw Material Stock Logs', path: '/stock/raw-materials-logs' },
-        { id: 'batches', label: 'Batches', path: '/stock/batches' },
-        { id: 'inventory-explorer', label: 'Inventory Explorer', path: '/stock/inventory-explorer' },
-        { id: 'lpn-finder', label: 'LPN Finder', path: '/stock/lpn-finder' },
+        ...(hasAccess('base_product_stock')  ? [{ id: 'product-stock', label: 'Base Product Stock', path: '/stock/products' }] : []),
+        ...(hasAccess('raw_material_stock')  ? [{ id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stock/raw-materials' }] : []),
+        ...(hasAccess('base_product_stock')  ? [{ id: 'product-stock-logs', label: 'Base Product Logs', path: '/stock/product-logs' }] : []),
+        ...(hasAccess('raw_material_stock')  ? [{ id: 'raw-material-stock-logs', label: 'Raw Material Logs', path: '/stock/raw-materials-logs' }] : []),
+        ...(hasAccess('inventory_tools')     ? [{ id: 'batches', label: 'Batches', path: '/stock/batches' }] : []),
+        ...(hasAccess('inventory_tools')     ? [{ id: 'inventory-explorer', label: 'Inventory Explorer', path: '/stock/inventory-explorer' }] : []),
+        ...(hasAccess('inventory_tools')     ? [{ id: 'lpn-finder', label: 'LPN Finder', path: '/stock/lpn-finder' }] : []),
       ],
-    },
-    {
+    }] : []),
+    ...(hasAccess('users') ? [{
       id: 'users',
       label: 'Users',
       children: [
         { id: 'user-list', label: 'User List', path: '/users' },
         { id: 'user-roles', label: 'Roles & Permissions', path: '/users/roles' },
       ],
-    },
-    {
+    }] : []),
+    ...(hasAccess('production') ? [{
       id: 'production',
       label: 'Production',
       children: [
@@ -89,22 +86,22 @@ const Sidebar = () => {
         { id: 'production-kettles', label: 'Kettles', path: '/production/kettles' },
         { id: 'production-vertical-tanks', label: 'Vertical Tanks', path: '/production/vertical-tanks' },
         { id: 'production-storage-tanks', label: 'Storage Tanks', path: '/production/storage-tanks' },
-        { id: 'recipes', label: 'Product Recipes', path: '/production/recipes' },
+        ...(hasAccess('production_recipes') ? [{ id: 'recipes', label: 'Product Recipes', path: '/production/recipes' }] : []),
         { id: 'kettle-logs', label: 'Kettle Logs', path: '/production/kettle-logs' },
       ],
-    },
-    {
+    }] : []),
+    ...(hasAccess('assembly') || hasAccess('packaging') || hasAccess('finished_product_stock') ? [{
       id: 'packaging',
       label: 'Packaging',
       children: [
-        { id: 'finished-products',      label: 'Finished Products', path: '/packaging/finished-products' },
-        { id: 'packaging-orders',       label: 'Packaging Orders',  path: '/packaging/orders' },
-        { id: 'assembly-orders',        label: 'Assembly',          path: '/packaging/assembly' },
-        { id: 'finished-product-stock', label: 'FP Stock',          path: '/packaging/finished-product-stock' },
-        { id: 'finished-product-logs',  label: 'FP Movements',      path: '/packaging/finished-product-logs' },
+        ...(hasAccess('packaging')              ? [{ id: 'finished-products', label: 'Finished Products', path: '/packaging/finished-products' }] : []),
+        ...(hasAccess('packaging')              ? [{ id: 'packaging-orders', label: 'Packaging Orders', path: '/packaging/orders' }] : []),
+        ...(hasAccess('assembly')               ? [{ id: 'assembly-orders', label: 'Assembly', path: '/packaging/assembly' }] : []),
+        ...(hasAccess('finished_product_stock') ? [{ id: 'finished-product-stock', label: 'FP Stock', path: '/packaging/finished-product-stock' }] : []),
+        ...(hasAccess('finished_product_stock') ? [{ id: 'finished-product-logs', label: 'FP Movements', path: '/packaging/finished-product-logs' }] : []),
       ],
-    },
-    {
+    }] : []),
+    ...(hasAccess('sales') ? [{
       id: 'sales',
       label: 'Sales',
       children: [
@@ -112,10 +109,14 @@ const Sidebar = () => {
         { id: 'sales-customers', label: 'Customers', path: '/sales/customers' },
         { id: 'sales-bills', label: 'Sales Bills', path: '/sales/bills' },
       ],
-    },
-    { id: 'machines', label: 'Machines', path: '/machines' },
-    { id: 'purchase-orders', label: 'Purchase Orders', path: '/purchase-orders' },
-    { id: 'counter-sales', label: 'Counter Sales', path: '/counter-sales' },
+    }] : []),
+    ...(getUserRole() === 'superadmin' ? [{
+      id: 'system',
+      label: 'System',
+      children: [
+        { id: 'backups', label: 'Backup & Restore', path: '/system/backups' },
+      ],
+    }] : []),
   ]
 
   const toggleExpand = (id) => {

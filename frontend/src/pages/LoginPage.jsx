@@ -19,7 +19,8 @@ const LoginPage = () => {
   // Check if already logged in on mount
   useEffect(() => {
     const token = localStorage.getItem('access') || sessionStorage.getItem('access')
-    if (token) {
+    const perms  = localStorage.getItem('user_permissions') || sessionStorage.getItem('user_permissions')
+    if (token && perms) {
       navigate('/dashboard')
     }
   }, [navigate])
@@ -62,11 +63,17 @@ const LoginPage = () => {
       const data = await response.json()
 
       if (response.ok) {
-        setTempToken(data.temp_token)
-        if (data.is_2fa_enabled) {
-          setStep('2FA_VERIFY')
+        if (data.access) {
+          // 2FA not required — direct login
+          loginSuccess(data)
         } else {
-          handleStartSetup(data.temp_token)
+          // 2FA required — proceed to verification or setup
+          setTempToken(data.temp_token)
+          if (data.is_2fa_enabled) {
+            setStep('2FA_VERIFY')
+          } else {
+            handleStartSetup(data.temp_token)
+          }
         }
       } else {
         setError(data.error || 'Login failed')
@@ -138,13 +145,17 @@ const LoginPage = () => {
   }
 
   const loginSuccess = (data) => {
+    // Always clear both storages first so stale data from a previous session never bleeds in
+    const KEYS = ['access', 'refresh', 'user', 'isAuthenticated', 'user_permissions']
+    KEYS.forEach(k => { localStorage.removeItem(k); sessionStorage.removeItem(k) })
+
     const storage = rememberMe ? localStorage : sessionStorage
-    
     storage.setItem('access', data.access)
     storage.setItem('refresh', data.refresh)
     storage.setItem('user', JSON.stringify(data.user))
     storage.setItem('isAuthenticated', 'true')
-    
+    storage.setItem('user_permissions', JSON.stringify(data.user?.permissions || {}))
+
     navigate('/dashboard')
   }
 

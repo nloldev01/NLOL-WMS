@@ -11,8 +11,13 @@ from django.db import transaction
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
+from rest_framework.decorators import api_view, permission_classes as perm_classes
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
-from django.db.models import Q
+from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Sum, Count, Avg, Q
+from django.db.models.functions import TruncMonth
+from accounts.permissions import ModulePermission, has_module_access
 from .models import Customer, Invoice, InvoiceItem
 from .serializers import (
     CustomerSerializer, InvoiceSerializer, InvoiceItemSerializer,
@@ -239,6 +244,7 @@ def _persist_invoices(invoices: list[dict]) -> tuple[int, list[dict]]:
 # ---------------------------------------------------------------------------
 
 class CustomerViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('sales')
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -357,13 +363,26 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return response
 
 
+class InvoicePagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 class InvoiceViewSet(viewsets.ModelViewSet):
-    queryset = Invoice.objects.select_related('customer').prefetch_related('items')
+    permission_classes = ModulePermission.read_write('sales')
     serializer_class = InvoiceSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    pagination_class = InvoicePagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['customer']
     search_fields = ['invoice_number', 'customer__customer_name']
-    ordering_fields = ['invoice_date', 'created_at', 'net_amount']
+    ordering_fields = ['invoice_number', 'invoice_date', 'created_at', 'net_amount', 'gross_amount']
     ordering = ['-invoice_date']
+
+    def get_queryset(self):
+        if self.action == 'retrieve':
+            return Invoice.objects.select_related('customer').prefetch_related('items')
+        return Invoice.objects.select_related('customer')
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -557,6 +576,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
 
 class InvoiceItemViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('sales')
     queryset = InvoiceItem.objects.select_related('invoice')
     serializer_class = InvoiceItemSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -589,3 +609,40 @@ class InvoiceItemViewSet(viewsets.ModelViewSet):
         )
         serializer = self.get_serializer(items, many=True)
         return Response(serializer.data)
+
+@api_view(['GET'])
+@perm_classes(ModulePermission.require('sales'))
+def dashboard_stats(request):
+    qs = Invoice.objects.all()
+    totals = qs.aggregate(
+        total_invoices=Count('id'),
+        total_revenue=Sum('net_amount'),
+        total_gross=Sum('gross_amount'),
+        total_discount=Sum('discount'),
+        avg_invoice=Avg('net_amount'),
+    )
+    trend = list(
+        qs.annotate(month=TruncMonth('invoice_date'))
+        .values('month')
+        .annotate(revenue=Sum('net_amount'), count=Count('id'))
+        .order_by('month')
+    )
+    trend_list = [
+        {'label': t['month'].strftime('%b %Y'), 'value': float(t['revenue'] or 0), 'count': t['count']}
+        for t in trend if t['month']
+    ][-6:]
+    top_customers = list(
+        qs.values('customer__customer_name')
+        .annotate(total=Sum('net_amount'), invoices=Count('id'))
+        .order_by('-total')[:5]
+    )
+    top_list = [
+        {'name': t['customer__customer_name'] or 'Unknown', 'total': float(t['total'] or 0), 'invoices': t['invoices']}
+        for t in top_customers
+    ]
+    return Response({
+        'totals': {k: float(v or 0) for k, v in totals.items()},
+        'trend': trend_list,
+        'top_customers': top_list,
+    })
+

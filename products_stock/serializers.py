@@ -29,7 +29,12 @@ class ProductStockLogSerializer(serializers.ModelSerializer):
     batch_code                 = serializers.ReadOnlyField(source='batch.batch_code')
     lpn_code                   = serializers.ReadOnlyField(source='lpn.lpn_code')
     unit                       = serializers.ReadOnlyField(source='product.unit.symbol')
-    performer_name             = serializers.ReadOnlyField(source='performed_by.username')
+    performer_name             = serializers.SerializerMethodField()
+
+    def get_performer_name(self, obj):
+        if not obj.performed_by:
+            return None
+        return obj.performed_by.fullname or obj.performed_by.username
 
     class Meta:
         model  = ProductStockLog
@@ -73,6 +78,7 @@ class FinishedProductStockSerializer(serializers.ModelSerializer):
     lpn_code               = serializers.ReadOnlyField(source='lpn.lpn_code')
     unit                   = serializers.ReadOnlyField(source='finished_product_variant.unit.symbol')
     unit_name              = serializers.ReadOnlyField(source='finished_product_variant.unit.name')
+    volume_per_unit        = serializers.ReadOnlyField(source='finished_product_variant.volume')
     volume_unit_symbol     = serializers.ReadOnlyField(source='finished_product_variant.volume_unit.symbol')
     secondary_unit         = serializers.ReadOnlyField(source='finished_product_variant.secondary_unit.symbol')
     secondary_quantity     = serializers.SerializerMethodField()
@@ -89,7 +95,7 @@ class FinishedProductStockSerializer(serializers.ModelSerializer):
             'id', 'finished_product_variant', 'finished_product_variant_label', 'finished_product_name',
             'batch', 'batch_code', 'lpn', 'lpn_code',
             'location', 'location_name',
-            'quantity', 'unit', 'unit_name', 'volume_unit_symbol', 'secondary_quantity', 'secondary_unit',
+            'quantity', 'unit', 'unit_name', 'volume_per_unit', 'volume_unit_symbol', 'secondary_quantity', 'secondary_unit',
             'updated_at',
         ]
 
@@ -106,9 +112,14 @@ class FinishedProductStockLogSerializer(serializers.ModelSerializer):
     volume_per_unit               = serializers.ReadOnlyField(source='finished_product_variant.volume')
     volume_unit_symbol            = serializers.ReadOnlyField(source='finished_product_variant.volume_unit.symbol')
     secondary_unit                = serializers.ReadOnlyField(source='finished_product_variant.secondary_unit.symbol')
-    performer_name                = serializers.ReadOnlyField(source='performed_by.username')
+    performer_name                = serializers.SerializerMethodField()
     secondary_quantity            = serializers.SerializerMethodField()
     secondary_balance_after       = serializers.SerializerMethodField()
+
+    def get_performer_name(self, obj):
+        if not obj.performed_by:
+            return None
+        return obj.performed_by.fullname or obj.performed_by.username
 
     def get_secondary_quantity(self, obj):
         v = obj.finished_product_variant

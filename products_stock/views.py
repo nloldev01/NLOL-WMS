@@ -105,6 +105,7 @@ class FinishedProductStockViewSet(viewsets.ReadOnlyModelViewSet):
         'finished_product_variant',
         'finished_product_variant__finished_product',
         'finished_product_variant__unit',
+        'finished_product_variant__volume_unit',
         'finished_product_variant__secondary_unit',
         'location', 'batch', 'lpn',
     ).all()

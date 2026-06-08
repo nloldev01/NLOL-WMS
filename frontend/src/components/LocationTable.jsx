@@ -109,19 +109,30 @@ const QRModal = ({ location, onClose }) => {
   const handleDownload = () => {
     const originalCanvas = qrRef.current?.querySelector('canvas')
     if (!originalCanvas) return
+    const padding = 24
+    const nameFont = 'bold 20px Inter, system-ui, sans-serif'
+    const codeFont = '20px monospace'
+
+    // Measure text on a scratch context first — resizing the real canvas resets its font/state
+    const measureCtx = document.createElement('canvas').getContext('2d')
+    measureCtx.font = nameFont
+    const nameWidth = measureCtx.measureText(location.name).width
+    measureCtx.font = codeFont
+    const codeWidth = measureCtx.measureText(location.code || location.short_code).width
+
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     const textSpace = 80
-    canvas.width = originalCanvas.width
+    canvas.width = Math.ceil(Math.max(originalCanvas.width, nameWidth + padding, codeWidth + padding))
     canvas.height = originalCanvas.height + textSpace
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(originalCanvas, 0, 0)
+    ctx.drawImage(originalCanvas, (canvas.width - originalCanvas.width) / 2, 0)
     ctx.fillStyle = '#000000'
     ctx.textAlign = 'center'
-    ctx.font = 'bold 20px Inter, system-ui, sans-serif'
+    ctx.font = nameFont
     ctx.fillText(location.name, canvas.width / 2, originalCanvas.height + 30)
-    ctx.font = '20px monospace'
+    ctx.font = codeFont
     ctx.fillText(location.code || location.short_code, canvas.width / 2, originalCanvas.height + 55)
     const link = document.createElement('a')
     link.href = canvas.toDataURL('image/png')
@@ -308,6 +319,7 @@ export default function LocationsTable() {
       await new Promise((resolve) => {
         const qrSizeInMM = labelWidth * 0.3
         const qrSizeInPx = Math.floor(qrSizeInMM * 3.78)
+        const labelWidthPx = Math.floor(labelWidth * 3.78)
         const labelHeightInPx = 150
         const qrCanvas = document.createElement('canvas')
         qrCanvas.width = qrSizeInPx; qrCanvas.height = qrSizeInPx
@@ -316,21 +328,20 @@ export default function LocationsTable() {
         QRCode.toCanvas(qrCanvas, qrValue, { width: qrSizeInPx, height: qrSizeInPx, margin: 0.8, errorCorrectionLevel: 'H' }, (err) => {
           if (err) { resolve(); return }
           const finalCanvas = document.createElement('canvas')
-          finalCanvas.width = qrSizeInPx; finalCanvas.height = qrSizeInPx + labelHeightInPx
+          finalCanvas.width = labelWidthPx; finalCanvas.height = qrSizeInPx + labelHeightInPx
           const ctx = finalCanvas.getContext('2d')
           ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height)
-          ctx.drawImage(qrCanvas, 0, 0, qrSizeInPx, qrSizeInPx)
+          ctx.drawImage(qrCanvas, (labelWidthPx - qrSizeInPx) / 2, 0, qrSizeInPx, qrSizeInPx)
           ctx.fillStyle = '#000000'; ctx.textAlign = 'center'
           ctx.font = 'bold 24px Arial'
           const displayName = loc.name.length > 20 ? loc.name.substring(0, 18) + '..' : loc.name
-          ctx.fillText(displayName, qrSizeInPx / 2, qrSizeInPx + 45)
+          ctx.fillText(displayName, labelWidthPx / 2, qrSizeInPx + 45)
           ctx.font = '24px Monospace'
-          ctx.fillText(loc.code || loc.short_code, qrSizeInPx / 2, qrSizeInPx + 90)
+          ctx.fillText(loc.code || loc.short_code, labelWidthPx / 2, qrSizeInPx + 90)
           const xPos = marginX + (col * (labelWidth + spacingX))
           const yPos = marginY + (row * (labelHeight + spacingY))
-          const xOffset = (labelWidth - qrSizeInMM) / 2
-          const totalDisplayHeight = qrSizeInMM + (labelHeightInPx / 3.78)
-          pdf.addImage(finalCanvas.toDataURL('image/png'), 'PNG', xPos + xOffset, yPos, qrSizeInMM, totalDisplayHeight)
+          const totalDisplayHeight = (qrSizeInPx + labelHeightInPx) / 3.78
+          pdf.addImage(finalCanvas.toDataURL('image/png'), 'PNG', xPos, yPos, labelWidth, totalDisplayHeight)
           resolve()
         })
       })

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
-import { apiFetch } from '../utils/api'
+import { apiFetch, parseError } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
 
 const PAGE_SIZE = 10
@@ -501,8 +501,7 @@ const StockMovementPage = () => {
           closeModal()
         }
       } else {
-        const firstError = Object.values(data).flat()[0]
-        setError(firstError || 'Something went wrong.')
+        setError(parseError(data))
       }
     } catch {
       setError('Network error. Please try again.')
@@ -662,6 +661,7 @@ const StockMovementPage = () => {
                     <th className="px-6 py-3">Location / Path</th>
                     <th className="px-6 py-3">Balance</th>
                     <th className="px-6 py-3">Date Recorded</th>
+                    <th className="px-6 py-3">By</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
                 </thead>
@@ -722,6 +722,11 @@ const StockMovementPage = () => {
                         </td>
                         <td className="px-6 py-3 text-gray-400 text-xs text-center">
                           {new Date(log.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-3">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                            {log.performed_by_name || log.performer_name || '—'}
+                          </span>
                         </td>
                         <td className="px-6 py-3">
                           <button

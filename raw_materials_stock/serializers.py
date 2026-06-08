@@ -75,10 +75,12 @@ class RawMaterialStockLogSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
-    performed_by_name = serializers.CharField(
-        source='performed_by.get_full_name',
-        read_only=True
-    )
+    performed_by_name = serializers.SerializerMethodField()
+
+    def get_performed_by_name(self, obj):
+        if not obj.performed_by:
+            return None
+        return obj.performed_by.fullname or obj.performed_by.username
 
     batch = serializers.PrimaryKeyRelatedField(
         queryset=Batch.objects.all(),

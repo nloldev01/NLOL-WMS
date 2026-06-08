@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import { apiFetch } from '../utils/api'
@@ -13,9 +13,9 @@ const ProductStockPage = () => {
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [page, setPage]           = useState(1)
-  const [error, setError]         = useState('')
   const [filters, setFilters]     = useState({ location: '', product: '', batch: '' })
   const [filterOpen, setFilterOpen] = useState(false)
+  const [expandedProduct, setExpandedProduct] = useState(null)
   const filterRef = useRef(null)
 
   useEffect(() => {
@@ -48,7 +48,7 @@ const ProductStockPage = () => {
       if (filters.location) params.append('location', filters.location)
       if (filters.product)  params.append('product',  filters.product)
       if (filters.batch)    params.append('batch',    filters.batch)
-      
+
       const res = await apiFetch(`/products-stock/stock/?${params.toString()}`)
       if (res && res.ok) {
         const data = await res.json()
@@ -58,7 +58,6 @@ const ProductStockPage = () => {
       }
     } catch {
       setStocks([])
-      setError('Failed to load product stock data')
     } finally {
       setLoading(false)
     }
@@ -96,16 +95,27 @@ const ProductStockPage = () => {
     } catch { console.error('Failed to load filter batches') }
   }
 
-  const filtered = stocks
-  const activeFilterCount = Object.values(filters).filter(v => v !== '').length
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  // Group by product, summing quantities; skip zero-stock entries
+  const grouped = {}
+  stocks.forEach(s => {
+    const qty = parseFloat(s.quantity) || 0
+    if (qty <= 0) return
+    if (!grouped[s.product]) {
+      grouped[s.product] = { product: s.product, product_name: s.product_name, unit: s.unit, total: 0, locations: {} }
+    }
+    grouped[s.product].total += qty
+    const loc = s.location_name || 'Unknown'
+    grouped[s.product].locations[loc] = (grouped[s.product].locations[loc] || 0) + qty
+  })
+  const groupedList = Object.values(grouped)
+  const maxTotal = Math.max(1, ...groupedList.map(g => g.total))
 
-  const getStockBadge = (qty) => {
-    if (qty <= 0)  return 'bg-red-50 text-red-600'
-    if (qty < 20)  return 'bg-yellow-50 text-yellow-600'
-    return 'bg-green-50 text-green-600'
-  }
+  const activeFilterCount = Object.values(filters).filter(v => v !== '').length
+  const totalPages = Math.max(1, Math.ceil(groupedList.length / PAGE_SIZE))
+  const paginated  = groupedList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  const toggleExpand = (productId) =>
+    setExpandedProduct(p => p === productId ? null : productId)
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -119,7 +129,7 @@ const ProductStockPage = () => {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">Base Product Stock Levels</h2>
               <div className="flex items-center gap-3">
-                
+
                 <a
                   href="/stock/product-logs"
                   className="flex items-center gap-1.5 rounded-lg bg-green-500 text-white px-3 py-1.5 text-xs font-medium hover:bg-green-600"
@@ -137,7 +147,7 @@ const ProductStockPage = () => {
                   <input
                     value={search}
                     onChange={e => { setSearch(e.target.value); setPage(1) }}
-                    placeholder="Search product or batch..."
+                    placeholder="Search product..."
                     className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 w-52"
                   />
                 </div>
@@ -165,16 +175,16 @@ const ProductStockPage = () => {
                   {filterOpen && (
                     <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl bg-white border border-gray-200 shadow-lg p-4 space-y-3">
                       <div className="flex items-center justify-between">
-                         <p className="text-xs font-semibold text-gray-700">Filters</p>
-                         {activeFilterCount > 0 && (
-                           <button
-                             onClick={() => { setFilters({ location: '', product: '', batch: '' }); setPage(1) }}
-                             className="text-[10px] text-orange-500 hover:underline"
-                           >
-                             Clear all
-                           </button>
-                         )}
-                       </div>
+                        <p className="text-xs font-semibold text-gray-700">Filters</p>
+                        {activeFilterCount > 0 && (
+                          <button
+                            onClick={() => { setFilters({ location: '', product: '', batch: '' }); setPage(1) }}
+                            className="text-[10px] text-orange-500 hover:underline"
+                          >
+                            Clear all
+                          </button>
+                        )}
+                      </div>
 
                       <div>
                         <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Base Product</label>
@@ -227,69 +237,105 @@ const ProductStockPage = () => {
               <table className="w-full text-sm text-left">
                 <thead className="bg-primary text-white text-xs uppercase">
                   <tr>
-                    <th className="px-6 py-3 w-10">No</th>
+                    <th className="px-4 py-3 w-8"></th>
                     <th className="px-6 py-3">Product</th>
-                    <th className="px-6 py-3">Batch / LPN</th>
-                    <th className="px-6 py-3">Location</th>
-                    <th className="px-6 py-3">Quantity</th>
-                    <th className="px-6 py-3">Updated</th>
+                    <th className="px-6 py-3">Total Quantity</th>
+                    <th className="px-6 py-3">Locations</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-10 text-center text-gray-400">No base product stock entries found</td>
+                      <td colSpan={5} className="px-6 py-10 text-center text-gray-400">No base product stock found</td>
                     </tr>
-                  ) : paginated.map((stock, idx) => (
-                    <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
-                      <td className="px-6 py-3 font-medium text-gray-900">{stock.product_name}</td>
-                      <td className="px-6 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-orange-600 bg-orange-50 font-bold border border-orange-100 inline-block w-fit">
-                            {stock.batch_code || 'â€"'}
-                          </span>
-                          {stock.lpn_code && (
-                            <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-indigo-600 bg-indigo-50 font-bold border border-indigo-100 inline-block w-fit">
-                              {stock.lpn_code}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-3 text-gray-500">{stock.location_name}</td>
-                      <td className="px-6 py-3">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${getStockBadge(stock.quantity)}`}>
-                          {parseFloat(stock.quantity).toLocaleString()} {stock.unit || ''}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-gray-400 text-xs">
-                        {stock.updated_at ? new Date(stock.updated_at).toLocaleDateString() : 'â€"'}
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap">
-                        <a
-                          href={`/stock/product-logs?product=${stock.product}&batch=${stock.batch}`}
-                          className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 inline-block text-center"
+                  ) : paginated.map(group => {
+                    const isExpanded = expandedProduct === group.product
+                    const locEntries = Object.entries(group.locations).sort((a, b) => b[1] - a[1])
+                    const maxLocQty = Math.max(1, ...locEntries.map(([, q]) => q))
+
+                    return (
+                      <React.Fragment key={group.product}>
+                        <tr
+                          onClick={() => toggleExpand(group.product)}
+                          className={`border-b border-gray-100 cursor-pointer transition-colors ${isExpanded ? 'bg-orange-50' : 'hover:bg-gray-50'}`}
                         >
-                          View Log
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
+                          <td className="px-4 py-4 text-center">
+                            <svg
+                              className={`w-3.5 h-3.5 text-gray-400 transition-transform inline-block ${isExpanded ? 'rotate-90' : ''}`}
+                              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-gray-900">{group.product_name}</td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-lg font-bold text-gray-800">{group.total.toLocaleString()}</span>
+                              <span className="text-xs text-gray-400">{group.unit}</span>
+                            </div>
+                            <div className="mt-1.5 h-1.5 w-36 rounded-full bg-gray-100">
+                              <div
+                                className="h-1.5 rounded-full bg-orange-400 transition-all"
+                                style={{ width: `${Math.min(100, (group.total / maxTotal) * 100)}%` }}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-gray-400">
+                            {locEntries.length} location{locEntries.length !== 1 ? 's' : ''}
+                          </td>
+                          <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                            <a
+                              href={`/stock/product-logs?product=${group.product}`}
+                              className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 inline-block"
+                            >
+                              View Log
+                            </a>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="border-b border-gray-100 bg-orange-50/50">
+                            <td colSpan={5} className="px-8 pb-5 pt-3">
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                                Stock by Location
+                              </p>
+                              <div className="space-y-2.5 max-w-xl">
+                                {locEntries.map(([loc, qty]) => (
+                                  <div key={loc} className="flex items-center gap-3">
+                                    <span className="text-xs text-gray-600 w-44 truncate shrink-0" title={loc}>{loc}</span>
+                                    <div className="flex-1 h-2 rounded-full bg-gray-200">
+                                      <div
+                                        className="h-2 rounded-full bg-orange-400 transition-all"
+                                        style={{ width: `${(qty / maxLocQty) * 100}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-semibold text-gray-700 w-24 text-right shrink-0">
+                                      {qty.toLocaleString()} <span className="font-normal text-gray-400">{group.unit}</span>
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             )}
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
-                Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}â€"{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                Showing {groupedList.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, groupedList.length)} of {groupedList.length} products
               </p>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
                   className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >â€¹</button>
+                >‹</button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                   <button
                     key={p}
@@ -303,7 +349,7 @@ const ProductStockPage = () => {
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
                   className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >â€º</button>
+                >›</button>
               </div>
             </div>
           </div>

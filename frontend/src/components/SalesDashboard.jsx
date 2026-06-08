@@ -1,264 +1,175 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
 
-const formatCurrency = (value) =>
-  typeof value === 'number'
-    ? `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : '₹0.00';
+const fmt = (v) => {
+  const n = parseFloat(v)
+  return isNaN(n) ? '₹0.00' : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+const fmtNum = (v) => {
+  const n = parseInt(v)
+  return isNaN(n) ? '0' : n.toLocaleString('en-IN')
+}
 
-const formatNumber = (value) =>
-  typeof value === 'number' ? value.toLocaleString('en-IN') : '0';
-
-const lineChartPoints = (data, width = 320, height = 160) => {
-  const max = Math.max(...data.map((item) => item.value), 1);
-  const stepX = data.length > 1 ? width / (data.length - 1) : width;
-  return data
-    .map((item, index) => {
-      const x = Math.round(index * stepX);
-      const y = Math.round(height - (item.value / max) * height);
-      return `${x},${y}`;
-    })
-    .join(' ');
-};
-
-const DashboardStatCard = ({ title, value, note, accent }) => (
-  <div className="rounded-3xl bg-white shadow-sm border border-gray-200 p-5">
-    <p className="text-sm text-gray-500">{title}</p>
-    <p className="mt-3 text-3xl font-semibold text-gray-900">{value}</p>
-    {note && <p className="mt-2 text-xs text-gray-500">{note}</p>}
-    <div className={`absolute top-5 right-5 w-3 h-3 rounded-full ${accent}`} />
+const StatCard = ({ title, value, note, dot }) => (
+  <div className="relative rounded-2xl bg-white shadow-sm border border-gray-100 p-5">
+    <div className={`absolute top-4 right-4 w-2.5 h-2.5 rounded-full ${dot}`} />
+    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{title}</p>
+    <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
+    {note && <p className="mt-1 text-xs text-gray-400">{note}</p>}
   </div>
-);
+)
 
-const TrendLineChart = ({ data }) => {
-  if (!data.length) return <p className="text-sm text-gray-500">No trend data available.</p>;
+const SkeletonCard = () => (
+  <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-5 animate-pulse">
+    <div className="h-3 w-24 bg-slate-200 rounded mb-3" />
+    <div className="h-7 w-32 bg-slate-200 rounded mb-2" />
+    <div className="h-2 w-40 bg-slate-100 rounded" />
+  </div>
+)
 
-  const maxValue = Math.max(...data.map((item) => item.value), 1);
-  const points = lineChartPoints(data);
-
+const TrendChart = ({ data }) => {
+  if (!data?.length) return <p className="text-sm text-gray-400 text-center py-8">No trend data yet.</p>
+  const max = Math.max(...data.map(d => d.value), 1)
+  const W = 320, H = 120
+  const pts = data.map((d, i) => {
+    const x = data.length > 1 ? Math.round((i / (data.length - 1)) * W) : W / 2
+    const y = Math.round(H - (d.value / max) * H)
+    return `${x},${y}`
+  }).join(' ')
   return (
-    <div className="relative h-44 rounded-3xl bg-slate-50 p-4 border border-slate-200">
-      <svg viewBox="0 0 320 160" className="h-full w-full">
+    <div className="relative h-40 bg-slate-50 rounded-xl p-3 border border-slate-100">
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-full w-full">
         <defs>
-          <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f97316" stopOpacity="0.35" />
+          <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f97316" stopOpacity="0.3" />
             <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <polyline fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={points} />
-        <polygon fill="url(#trendGradient)" points={`${points} 320,160 0,160`} />
-        {data.map((point, index) => {
-          const x = data.length > 1 ? (320 / (data.length - 1)) * index : 160;
-          const y = 160 - (point.value / maxValue) * 160;
-          return <circle key={point.label} cx={x} cy={y} r="4" fill="#f97316" />;
+        <polyline fill="none" stroke="#f97316" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={pts} />
+        <polygon fill="url(#g)" points={`${pts} ${W},${H} 0,${H}`} />
+        {data.map((d, i) => {
+          const x = data.length > 1 ? Math.round((i / (data.length - 1)) * W) : W / 2
+          const y = Math.round(H - (d.value / max) * H)
+          return <circle key={d.label} cx={x} cy={y} r="4" fill="#f97316" />
         })}
       </svg>
-      <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[11px] text-gray-500">
-        {data.map((item) => (
-          <span key={item.label} className="truncate" style={{ maxWidth: 56 }}>{item.label}</span>
-        ))}
+      <div className="absolute bottom-2 left-3 right-3 flex justify-between text-[10px] text-gray-400">
+        {data.map(d => <span key={d.label} className="truncate max-w-[52px]">{d.label}</span>)}
       </div>
     </div>
-  );
-};
-
-// Skeleton shimmer for loading state
-const SkeletonCard = () => (
-  <div className="rounded-3xl bg-white shadow-sm border border-gray-200 p-5 animate-pulse">
-    <div className="h-3 w-28 bg-slate-200 rounded mb-4" />
-    <div className="h-8 w-20 bg-slate-200 rounded mb-3" />
-    <div className="h-2 w-36 bg-slate-100 rounded" />
-  </div>
-);
+  )
+}
 
 const SalesDashboard = () => {
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [stats, setStats]   = useState(null)
+  const [recent, setRecent] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]   = useState('')
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadData = async () => {
-      setLoading(true);
-      setError('');
+    let cancelled = false
+    const load = async () => {
+      setLoading(true); setError('')
       try {
-        const res = await apiFetch('/sales/invoices/');
-        if (cancelled) return;
-
-        if (!res?.ok) {
-          setError('Unable to load dashboard data.');
-          return;
+        const [sRes, rRes] = await Promise.all([
+          apiFetch('/sales/dashboard-stats/'),
+          apiFetch('/sales/invoices/?page_size=5&ordering=-invoice_date'),
+        ])
+        if (cancelled) return
+        if (sRes?.ok) setStats(await sRes.json())
+        else setError('Could not load stats.')
+        if (rRes?.ok) {
+          const d = await rRes.json()
+          setRecent(d.results ?? [])
         }
+      } catch { if (!cancelled) setError('Network error loading dashboard.') }
+      finally { if (!cancelled) setLoading(false) }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
-        const json = await res.json();
-        if (!cancelled) {
-          setInvoices(Array.isArray(json) ? json : (json.results ?? []));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error(err);
-          setError('Network error loading dashboard.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    loadData();
-    return () => { cancelled = true; };
-  }, []);
-
-  const summary = useMemo(() => {
-    const totalSales = invoices.length;
-    const totalRevenue = invoices.reduce(
-      (sum, inv) => sum + Number(inv.net_amount || inv.amount || 0),
-      0
-    );
-    return {
-      totalSales,
-      totalRevenue,
-      averageInvoice: totalSales ? totalRevenue / totalSales : 0,
-    };
-  }, [invoices]);
-
-  const revenueTrend = useMemo(() => {
-    const grouped = invoices.reduce((acc, inv) => {
-      const date = new Date(inv.bill_date || inv.invoice_date || inv.date);
-      if (Number.isNaN(date.getTime())) return acc;
-      const label = date.toLocaleString('en-US', { month: 'short', year: 'numeric' });
-      acc[label] = (acc[label] || 0) + Number(inv.net_amount || inv.amount || 0);
-      return acc;
-    }, {});
-
-    return Object.entries(grouped)
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => new Date(a.label) - new Date(b.label))
-      .slice(-6);
-  }, [invoices]);
-
-  const topCustomers = useMemo(() => {
-    const totals = invoices.reduce((acc, inv) => {
-      const name = inv.customer_name || inv.customer?.customer_name || 'Unknown';
-      acc[name] = (acc[name] || 0) + Number(inv.net_amount || inv.amount || 0);
-      return acc;
-    }, {});
-
-    return Object.entries(totals)
-      .map(([name, total]) => ({ name, total }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  }, [invoices]);
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}
-        </div>
-        <div className="rounded-3xl bg-white shadow-sm border border-gray-200 p-6 animate-pulse h-64" />
+  if (loading) return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
       </div>
-    );
-  }
+      <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-6 animate-pulse h-52" />
+    </div>
+  )
 
-  if (error) {
-    return (
-      <div className="rounded-3xl bg-red-50 border border-red-200 p-6 text-red-700">{error}</div>
-    );
-  }
+  if (error) return (
+    <div className="rounded-2xl bg-red-50 border border-red-200 p-5 text-sm text-red-700">{error}</div>
+  )
+
+  const t = stats?.totals ?? {}
 
   return (
-    <div className="space-y-6">
-      {/* Stat Cards — customers removed; only invoice-derived stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        <DashboardStatCard
-          title="Total Sales Invoices"
-          value={formatNumber(summary.totalSales)}
-          note="Invoices captured in the system"
-          accent="bg-orange-400"
-        />
-        <DashboardStatCard
-          title="Total Revenue"
-          value={formatCurrency(summary.totalRevenue)}
-          note="Sum of all invoice net values"
-          accent="bg-emerald-400"
-        />
-        <DashboardStatCard
-          title="Avg. Invoice Value"
-          value={formatCurrency(summary.averageInvoice)}
-          note="Revenue per invoice"
-          accent="bg-violet-400"
-        />
+    <div className="space-y-5">
+      {/* KPI cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard title="Total Invoices"    value={fmtNum(t.total_invoices)}  note="All time"              dot="bg-orange-400" />
+        <StatCard title="Total Revenue"     value={fmt(t.total_revenue)}      note="Net amount"            dot="bg-emerald-400" />
+        <StatCard title="Total Gross"       value={fmt(t.total_gross)}        note="Before discount"       dot="bg-blue-400" />
+        <StatCard title="Avg. Invoice"      value={fmt(t.avg_invoice)}        note="Net per invoice"       dot="bg-violet-400" />
       </div>
 
-      {/* Revenue Trend */}
-      <div className="rounded-3xl bg-white shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Revenue Trend</h2>
-            <p className="text-sm text-slate-500 mt-1">Latest 6 periods by invoice date.</p>
+      {/* Trend + top customers */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-800">Revenue Trend</h3>
+            <span className="text-[10px] bg-orange-50 text-orange-600 font-semibold px-2 py-0.5 rounded-full">Last 6 months</span>
           </div>
-          <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
-            Net Revenue
-          </span>
+          <TrendChart data={stats?.trend ?? []} />
         </div>
-        <TrendLineChart data={revenueTrend} />
+
+        <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-5">
+          <h3 className="text-sm font-semibold text-gray-800 mb-3">Top Customers</h3>
+          {(stats?.top_customers ?? []).length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">No data yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {(stats?.top_customers ?? []).map((c, i) => (
+                <div key={c.name} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-2.5">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-800">{i + 1}. {c.name}</p>
+                    <p className="text-[10px] text-gray-400">{c.invoices} invoice{c.invoices !== 1 ? 's' : ''}</p>
+                  </div>
+                  <span className="text-xs font-bold text-emerald-700">{fmt(c.total)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Top Customers */}
-        <div className="rounded-3xl bg-white shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Top Customers by Revenue</h2>
-          {topCustomers.length ? (
-            <div className="space-y-3">
-              {topCustomers.map((customer, index) => (
-                <div key={customer.name} className="flex items-center justify-between rounded-2xl bg-slate-50 p-4">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{index + 1}. {customer.name}</p>
-                    <p className="text-xs text-slate-500">{formatCurrency(customer.total)}</p>
-                  </div>
-                  <span className="text-xs uppercase tracking-[0.12em] text-slate-500">Rank</span>
+      {/* Recent sales */}
+      <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-5">
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">Recent Invoices</h3>
+        {recent.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No invoices yet.</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {recent.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between py-2.5">
+                <div>
+                  <p className="text-xs font-semibold text-gray-800 font-mono">{inv.invoice_number}</p>
+                  <p className="text-[10px] text-gray-400">{inv.customer_name} · {inv.invoice_date}</p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No data available for top customers.</p>
-          )}
-        </div>
-
-        {/* Recent Sales */}
-        <div className="rounded-3xl bg-white shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Recent Sales</h2>
-          {invoices.slice(0, 5).length ? (
-            <div className="space-y-3">
-              {invoices.slice(0, 5).map((invoice) => (
-                <div
-                  key={invoice.id || invoice.invoice_number || JSON.stringify(invoice)}
-                  className="rounded-2xl bg-slate-50 p-4"
-                >
-                  <p className="text-sm font-semibold text-slate-900">
-                    {invoice.invoice_number || invoice.bill_no || 'Invoice'}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {invoice.customer_name || invoice.customer?.customer_name || 'Unknown customer'}
-                  </p>
-                  <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
-                    <span>
-                      {new Date(invoice.bill_date || invoice.invoice_date || invoice.date || '')
-                        .toLocaleDateString('en-IN') || 'No date'}
-                    </span>
-                    <span>{formatCurrency(Number(invoice.net_amount || invoice.amount || 0))}</span>
-                  </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold text-gray-900">{fmt(inv.net_amount)}</p>
+                  {parseFloat(inv.discount) > 0 && (
+                    <p className="text-[10px] text-red-400">-{fmt(inv.discount)}</p>
+                  )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No recent sales invoices to show.</p>
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default SalesDashboard;
+export default SalesDashboard

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import { apiFetch } from '../utils/api'
@@ -6,15 +6,15 @@ import { apiFetch } from '../utils/api'
 const PAGE_SIZE = 10
 
 const RawMaterialStockPage = () => {
-  const [stocks, setStocks] = useState([])
+  const [stocks, setStocks]       = useState([])
   const [materials, setMaterials] = useState([])
   const [locations, setLocations] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const [error, setError] = useState('')
-  const [filters, setFilters] = useState({ material__type: '', location: '' })
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
+  const [page, setPage]           = useState(1)
+  const [filters, setFilters]     = useState({ material__type: '', location: '' })
   const [filterOpen, setFilterOpen] = useState(false)
+  const [expandedMaterial, setExpandedMaterial] = useState(null)
   const filterRef = useRef(null)
 
   useEffect(() => {
@@ -22,9 +22,10 @@ const RawMaterialStockPage = () => {
     fetchLocations()
   }, [])
 
+  // Refetch stocks only when location filter changes (search/type filtered client-side)
   useEffect(() => {
     fetchStocks()
-  }, [search, filters])
+  }, [filters.location])
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -39,10 +40,7 @@ const RawMaterialStockPage = () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (search) params.append('search', search)
-      if (filters.material__type) params.append('material__type', filters.material__type)
       if (filters.location) params.append('location', filters.location)
-
       const res = await apiFetch(`/raw-materials-stock/stock/?${params.toString()}`)
       if (res && res.ok) {
         const data = await res.json()
@@ -52,7 +50,6 @@ const RawMaterialStockPage = () => {
       }
     } catch {
       setStocks([])
-      setError('Failed to load stock data')
     } finally {
       setLoading(false)
     }
@@ -78,20 +75,39 @@ const RawMaterialStockPage = () => {
     } catch { console.error('Failed to load locations') }
   }
 
-  // Since we now filter on backend, this is just for safety/offline feel if needed, 
-  // but we can trust the backend results. We still use paginated for showing.
-  const filtered = stocks
+  // Build stock map keyed by material id
+  const stockMap = {}
+  stocks.forEach(s => {
+    const qty = parseFloat(s.quantity) || 0
+    if (!stockMap[s.material]) {
+      stockMap[s.material] = { total: 0, locations: {}, unit: s.unit || '' }
+    }
+    stockMap[s.material].total += qty
+    if (qty > 0) {
+      const loc = s.location_name || 'Unknown'
+      stockMap[s.material].locations[loc] = (stockMap[s.material].locations[loc] || 0) + qty
+    }
+  })
 
+  // Filter materials client-side by search and type
+  let displayList = materials
+  if (search) displayList = displayList.filter(m => m.name.toLowerCase().includes(search.toLowerCase()))
+  if (filters.material__type) displayList = displayList.filter(m => m.type === filters.material__type)
+
+  // Attach stock data to each material
+  const enriched = displayList.map(m => ({
+    ...m,
+    total: stockMap[m.id]?.total || 0,
+    unit: stockMap[m.id]?.unit || m.unit_name || m.unit || '',
+    locations: stockMap[m.id]?.locations || {},
+  }))
+
+  const maxTotal = Math.max(1, ...enriched.map(m => m.total))
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(enriched.length / PAGE_SIZE))
+  const paginated  = enriched.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  // Badge color based on quantity
-  const getStockBadge = (qty) => {
-    if (qty <= 0) return 'bg-red-50 text-red-600'
-    if (qty < 50) return 'bg-yellow-50 text-yellow-600'
-    return 'bg-green-50 text-green-600'
-  }
+  const toggleExpand = (id) => setExpandedMaterial(p => p === id ? null : id)
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -99,19 +115,13 @@ const RawMaterialStockPage = () => {
       <div className="ml-16">
         <Topbar />
         <main className="p-6">
-
-          {/* Breadcrumb */}
           <p className="text-xs text-gray-400 mb-3">Raw Materials / Stock</p>
 
-          {/* Card */}
           <div className="rounded-xl bg-white shadow-sm">
-
-            {/* Table Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">Raw Material Stock</h2>
               <div className="flex items-center gap-3">
 
-                {/* Record Movement button — links to movements page */}
                 <a
                   href="/stock/raw-materials-logs"
                   className="flex items-center gap-1.5 rounded-lg bg-green-500 text-white px-3 py-1.5 text-xs font-medium hover:bg-green-600"
@@ -122,7 +132,6 @@ const RawMaterialStockPage = () => {
                   Record Movement
                 </a>
 
-                {/* Search */}
                 <div className="relative">
                   <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -130,19 +139,19 @@ const RawMaterialStockPage = () => {
                   <input
                     value={search}
                     onChange={e => { setSearch(e.target.value); setPage(1) }}
-                    placeholder="Search material or location..."
+                    placeholder="Search material..."
                     className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 w-52"
                   />
                 </div>
 
-                {/* Filter */}
                 <div className="relative" ref={filterRef}>
                   <button
                     onClick={() => setFilterOpen(o => !o)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${activeFilterCount > 0
+                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      activeFilterCount > 0
                         ? 'border-orange-400 bg-orange-50 text-orange-600'
                         : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                      }`}
+                    }`}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
@@ -169,7 +178,6 @@ const RawMaterialStockPage = () => {
                         )}
                       </div>
 
-                      {/* Type */}
                       <div>
                         <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Type</label>
                         <select
@@ -183,7 +191,6 @@ const RawMaterialStockPage = () => {
                         </select>
                       </div>
 
-                      {/* Location */}
                       <div>
                         <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Location</label>
                         <select
@@ -201,87 +208,130 @@ const RawMaterialStockPage = () => {
               </div>
             </div>
 
-            {/* Table */}
             {loading ? (
               <div className="p-10 text-center text-gray-400 text-sm">Loading...</div>
             ) : (
               <table className="w-full text-sm text-left">
                 <thead className="bg-primary text-white text-xs uppercase">
                   <tr>
-                    <th className="px-6 py-3 w-10">No</th>
+                    <th className="px-4 py-3 w-8"></th>
                     <th className="px-6 py-3">Material</th>
                     <th className="px-6 py-3">Type</th>
-                    <th className="px-6 py-3">Location</th>
-                    <th className="px-6 py-3">Batch / LPN</th>
-                    <th className="px-6 py-3">Quantity</th>
-                    <th className="px-6 py-3">Capacity</th>
-                    <th className="px-6 py-3">Last Updated</th>
+                    <th className="px-6 py-3">Total Stock</th>
+                    <th className="px-6 py-3">Locations</th>
                     <th className="px-6 py-3">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody>
                   {paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-6 py-10 text-center text-gray-400">No stock entries found</td>
+                      <td colSpan={6} className="px-6 py-10 text-center text-gray-400">No materials found</td>
                     </tr>
-                  ) : paginated.map((stock, idx) => (
-                    <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
-                      <td className="px-6 py-3 font-medium text-gray-900">{stock.material_name}</td>
-                      <td className="px-6 py-3">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${stock.material_type === 'Raw Material'
-                            ? 'bg-blue-50 text-blue-600'
-                            : 'bg-purple-50 text-purple-600'
-                          }`}>
-                          {stock.material_type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-gray-500">{stock.location_name}</td>
-                      <td className="px-6 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-orange-600 bg-orange-50 font-bold border border-orange-100 inline-block w-fit">
-                            {stock.batch_code || '—'}
-                          </span>
-                          {stock.lpn_code && (
-                            <span className="px-1.5 py-0.5 rounded font-mono text-[9px] text-indigo-600 bg-indigo-50 font-bold border border-indigo-100 inline-block w-fit">
-                              {stock.lpn_code}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-3">
-                        <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${getStockBadge(stock.quantity)}`}>
-                          {parseFloat(stock.quantity).toLocaleString()} {stock.unit || ''}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3">
-                        {stock.secondary_quantity && stock.secondary_unit ? (
-                          <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-xs font-medium">
-                            {parseFloat(stock.secondary_quantity).toLocaleString()} {stock.secondary_unit}
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td className="px-6 py-3 text-gray-400 text-xs">
-                        {stock.updated_at ? new Date(stock.updated_at).toLocaleDateString() : '—'}
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap">
-                        <a
-                          href={`/stock/product-logs?product=${stock.product}&batch=${stock.batch}`}
-                          className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 inline-block text-center"
+                  ) : paginated.map(mat => {
+                    const isExpanded = expandedMaterial === mat.id
+                    const locEntries = Object.entries(mat.locations).sort((a, b) => b[1] - a[1])
+                    const maxLocQty  = Math.max(1, ...locEntries.map(([, q]) => q))
+
+                    return (
+                      <React.Fragment key={mat.id}>
+                        <tr
+                          onClick={() => toggleExpand(mat.id)}
+                          className={`border-b border-gray-100 cursor-pointer transition-colors ${
+                            isExpanded ? 'bg-blue-50' : 'hover:bg-gray-50'
+                          }`}
                         >
-                          View Log
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
+                          <td className="px-4 py-4 text-center">
+                            <svg
+                              className={`w-3.5 h-3.5 text-gray-400 transition-transform inline-block ${isExpanded ? 'rotate-90' : ''}`}
+                              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-gray-900">{mat.name}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${
+                              mat.type === 'Raw Material'
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'bg-purple-50 text-purple-600'
+                            }`}>
+                              {mat.type || '—'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            {mat.total > 0 ? (
+                              <>
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className="text-lg font-bold text-gray-800">{mat.total.toLocaleString()}</span>
+                                  <span className="text-xs text-gray-400">{mat.unit}</span>
+                                </div>
+                                <div className="mt-1.5 h-1.5 w-36 rounded-full bg-gray-100">
+                                  <div
+                                    className="h-1.5 rounded-full bg-blue-400 transition-all"
+                                    style={{ width: `${Math.min(100, (mat.total / maxTotal) * 100)}%` }}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-xs text-gray-300 italic">No stock</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-gray-400">
+                            {locEntries.length > 0
+                              ? `${locEntries.length} location${locEntries.length !== 1 ? 's' : ''}`
+                              : '—'}
+                          </td>
+                          <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                            <a
+                              href={`/stock/raw-materials-logs?material=${mat.id}`}
+                              className="rounded-md bg-orange-500 px-3 py-1 text-xs font-medium text-white hover:bg-orange-600 inline-block"
+                            >
+                              View Log
+                            </a>
+                          </td>
+                        </tr>
+
+                        {isExpanded && (
+                          <tr className="border-b border-gray-100 bg-blue-50/50">
+                            <td colSpan={6} className="px-8 pb-5 pt-3">
+                              {locEntries.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic">No stock recorded at any location.</p>
+                              ) : (
+                                <>
+                                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                                    Stock by Location
+                                  </p>
+                                  <div className="space-y-2.5 max-w-xl">
+                                    {locEntries.map(([loc, qty]) => (
+                                      <div key={loc} className="flex items-center gap-3">
+                                        <span className="text-xs text-gray-600 w-44 truncate shrink-0" title={loc}>{loc}</span>
+                                        <div className="flex-1 h-2 rounded-full bg-gray-200">
+                                          <div
+                                            className="h-2 rounded-full bg-blue-400 transition-all"
+                                            style={{ width: `${(qty / maxLocQty) * 100}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-xs font-semibold text-gray-700 w-24 text-right shrink-0">
+                                          {qty.toLocaleString()} <span className="font-normal text-gray-400">{mat.unit}</span>
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             )}
 
-            {/* Pagination */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
-                Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                Showing {enriched.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, enriched.length)} of {enriched.length} materials
               </p>
               <div className="flex items-center gap-1">
                 <button
@@ -293,8 +343,9 @@ const RawMaterialStockPage = () => {
                   <button
                     key={p}
                     onClick={() => setPage(p)}
-                    className={`w-7 h-7 rounded text-xs font-medium ${page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
-                      }`}
+                    className={`w-7 h-7 rounded text-xs font-medium ${
+                      page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
+                    }`}
                   >{p}</button>
                 ))}
                 <button

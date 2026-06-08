@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
-import { apiFetch } from '../utils/api'
+import { apiFetch, getApiError } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
 
 const PAGE_SIZE = 10
@@ -82,23 +82,26 @@ const PackagingOrdersPage = () => {
       if (res?.ok) {
         fetchOrders()
         setCreateOpen(false); setFormAssemblyOrder(''); setFormNotes('')
-      } else {
-        const errData = await res.json()
-        setFormError(errData.detail || Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v[0] : v}`).join('; ') || 'Check your inputs')
-      }
-    } catch { setFormError('Connection error') }
+      } else setFormError(await getApiError(res))
+    } catch { setFormError('Connection error — check your network') }
     finally { setSubmitting(false) }
   }
 
   const handleStart = async (order) => {
-    const res = await apiFetch(`/packaging/packaging-orders/${order.id}/start/`, { method: 'POST' })
-    if (res?.ok) fetchOrders()
+    try {
+      const res = await apiFetch(`/packaging/packaging-orders/${order.id}/start/`, { method: 'POST' })
+      if (res?.ok) fetchOrders()
+      else setError(await getApiError(res))
+    } catch { setError('Connection error — check your network') }
   }
 
   const handleCancelOrder = async (order) => {
     if (!window.confirm(`Cancel order ${order.order_number}?`)) return
-    const res = await apiFetch(`/packaging/packaging-orders/${order.id}/cancel/`, { method: 'POST' })
-    if (res?.ok) fetchOrders()
+    try {
+      const res = await apiFetch(`/packaging/packaging-orders/${order.id}/cancel/`, { method: 'POST' })
+      if (res?.ok) fetchOrders()
+      else setError(await getApiError(res))
+    } catch { setError('Connection error — check your network') }
   }
 
   const openCompleteModal = (order) => {
@@ -118,11 +121,8 @@ const PackagingOrdersPage = () => {
         fetchOrders()
         setCompleteTarget(null)
         if (data.batch_code || data.lpn_code) setSuccessLog(data)
-      } else {
-        const errData = await res.json()
-        setCompleteError(errData.detail || errData.error || 'Failed to complete labeling')
-      }
-    } catch { setCompleteError('Connection error') }
+      } else setCompleteError(await getApiError(res))
+    } catch { setCompleteError('Connection error — check your network') }
     finally { setCompleting(false) }
   }
 

@@ -4,10 +4,12 @@ import { apiFetch } from '../utils/api';
 const PAGE_SIZE = 10;
 
 // ─── tiny helpers ────────────────────────────────────────────────────────────
-const fmt = (n) =>
-  typeof n === 'number'
-    ? n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : '—';
+const fmt = (n) => {
+  const num = parseFloat(n)
+  return !isNaN(num)
+    ? num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '—'
+}
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN') : '—');
 
@@ -17,10 +19,16 @@ const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN') : '—');
 
 export default function SalesBillsTable() {
   // ── Invoice list ──────────────────────────────────────────────────────────
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [invoices, setInvoices]     = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading]       = useState(true);
+  const [search, setSearch]         = useState('');
+  const [page, setPage]             = useState(1);
+  const [pageSize, setPageSize]     = useState(20);
+  const [ordering, setOrdering]     = useState('-invoice_date');
+  const [customers, setCustomers]   = useState([]);
+  const [customerFilter, setCustomerFilter] = useState('');
+  const searchTimer = useRef(null);
 
   // ── Upload flow ───────────────────────────────────────────────────────────
   const [uploadStage, setUploadStage] = useState('idle'); // idle|parsing|preview|confirming|done
@@ -31,6 +39,9 @@ export default function SalesBillsTable() {
   // expanded bill rows in preview
   const [expandedBills, setExpandedBills] = useState({});
 
+  // bill detail modal
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+
   const fileInputRef = useRef(null);
   const csvInputRef  = useRef(null);
 
@@ -39,16 +50,33 @@ export default function SalesBillsTable() {
   const [csvResult,    setCsvResult]    = useState(null);
   const [showCsvDone,  setShowCsvDone]  = useState(false);
 
-  // ── Fetch invoices ────────────────────────────────────────────────────────
-  useEffect(() => { fetchInvoices(); }, []);
+  // ── Fetch customers for filter ────────────────────────────────────────────
+  useEffect(() => {
+    apiFetch('/sales/customers/?page_size=200').then(r => r?.ok && r.json().then(d =>
+      setCustomers(Array.isArray(d) ? d : (d.results ?? []))
+    ));
+  }, []);
+
+  // ── Fetch invoices (server-side) ──────────────────────────────────────────
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      fetchInvoices();
+    }, 300);
+    return () => clearTimeout(searchTimer.current);
+  }, [page, pageSize, ordering, search, customerFilter]);
 
   const fetchInvoices = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch('/sales/invoices/');
-      if (res.ok) {
+      const params = new URLSearchParams({ page, page_size: pageSize, ordering });
+      if (search)         params.append('search', search);
+      if (customerFilter) params.append('customer', customerFilter);
+      const res = await apiFetch(`/sales/invoices/?${params}`);
+      if (res?.ok) {
         const data = await res.json();
-        setInvoices(Array.isArray(data) ? data : (data.results ?? []));
+        setInvoices(data.results ?? []);
+        setTotalCount(data.count ?? 0);
       }
     } finally {
       setLoading(false);
@@ -185,19 +213,29 @@ export default function SalesBillsTable() {
     }
   };
   // ─────────────────────────────────────────────────────────────────────────
-  const filtered = invoices.filter((inv) => {
-    const q = search.toLowerCase();
-    return (
-      inv.invoice_number?.toLowerCase().includes(q) ||
-      inv.customer_name?.toLowerCase().includes(q) ||
-      inv.customer?.customer_name?.toLowerCase().includes(q)
-    );
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Server-side: invoices is already the current page
+  const paginated  = invoices;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const handleSearch = (v) => { setSearch(v); setPage(1); };
+
+  // Sort toggle helper
+  const toggleSort = (field) => {
+    setOrdering(prev => prev === field ? `-${field}` : field);
+    setPage(1);
+  };
+  const sortIcon = (field) => {
+    if (ordering === field) return ' ↑';
+    if (ordering === `-${field}`) return ' ↓';
+    return '';
+  };
+
+  // On-demand detail fetch when row is clicked
+  const handleRowClick = async (inv) => {
+    setSelectedInvoice({ ...inv, _loading: true });
+    const res = await apiFetch(`/sales/invoices/${inv.id}/`);
+    if (res?.ok) setSelectedInvoice(await res.json());
+  };
 
   const toggleBill = (idx) =>
     setExpandedBills((prev) => ({ ...prev, [idx]: !prev[idx] }));
@@ -264,54 +302,45 @@ export default function SalesBillsTable() {
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap gap-3 items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Sales Bills / Invoices</h2>
+          <h2 className="text-lg font-semibold text-gray-900 shrink-0">Sales Bills / Invoices</h2>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {/* Search */}
             <input
               type="text"
               placeholder="Search invoice or customer…"
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 w-44 focus:outline-none focus:ring-2 focus:ring-emerald-400"
             />
 
-            {/* Upload button */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleFileChange}
-              className="hidden"
-            />
+            {/* Customer filter */}
+            <select
+              value={customerFilter}
+              onChange={e => { setCustomerFilter(e.target.value); setPage(1); }}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400 max-w-[160px]"
+            >
+              <option value="">All Customers</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.customer_name}</option>)}
+            </select>
+
+            {/* Upload buttons */}
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="hidden" />
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadStage === 'parsing'}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg transition-colors whitespace-nowrap"
             >
-              {uploadStage === 'parsing'
-                ? <><Spinner /> Parsing…</>
-                : <><UploadIcon /> Upload FinPro Excel</>
-              }
+              {uploadStage === 'parsing' ? <><Spinner /> Parsing…</> : <><UploadIcon /> Upload FinPro Excel</>}
             </button>
 
-            {/* CSV upload button */}
-            <input
-              ref={csvInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleCsvUpload}
-              className="hidden"
-            />
+            <input ref={csvInputRef} type="file" accept=".csv" onChange={handleCsvUpload} className="hidden" />
             <button
               onClick={() => csvInputRef.current?.click()}
               disabled={csvUploading}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg transition-colors whitespace-nowrap"
             >
-              {csvUploading
-                ? <><Spinner /> Uploading…</>
-                : <><UploadIcon /> Upload CSV Data</>
-              }
+              {csvUploading ? <><Spinner /> Uploading…</> : <><UploadIcon /> Upload CSV Data</>}
             </button>
           </div>
         </div>
@@ -360,18 +389,38 @@ export default function SalesBillsTable() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  <th className="px-6 py-3">Invoice #</th>
+                  <th className="px-6 py-3 cursor-pointer hover:text-emerald-600 select-none" onClick={() => toggleSort('invoice_number')}>
+                    Invoice #{sortIcon('invoice_number')}
+                  </th>
                   <th className="px-6 py-3">Customer</th>
-                  <th className="px-6 py-3">Date</th>
-                  <th className="px-6 py-3 text-right">Gross</th>
+                  <th className="px-6 py-3 cursor-pointer hover:text-emerald-600 select-none" onClick={() => toggleSort('invoice_date')}>
+                    Date{sortIcon('invoice_date')}
+                  </th>
+                  <th className="px-6 py-3 text-right cursor-pointer hover:text-emerald-600 select-none" onClick={() => toggleSort('gross_amount')}>
+                    Gross{sortIcon('gross_amount')}
+                  </th>
                   <th className="px-6 py-3 text-right">Discount</th>
-                  <th className="px-6 py-3 text-right">Net</th>
+                  <th className="px-6 py-3 text-right cursor-pointer hover:text-emerald-600 select-none" onClick={() => toggleSort('net_amount')}>
+                    Net{sortIcon('net_amount')}
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {paginated.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-6 py-3 font-mono text-emerald-700 font-medium">{inv.invoice_number}</td>
+                  <tr
+                    key={inv.id}
+                    onClick={() => handleRowClick(inv)}
+                    className="hover:bg-emerald-50/40 transition-colors cursor-pointer"
+                  >
+                    <td className="px-6 py-3">
+                      <span
+                        onClick={e => { e.stopPropagation(); setSearch(inv.invoice_number); setPage(1) }}
+                        className="font-mono text-emerald-700 font-medium hover:underline cursor-pointer"
+                        title="Click to filter by this bill"
+                      >
+                        {inv.invoice_number}
+                      </span>
+                    </td>
                     <td className="px-6 py-3 text-gray-800">{inv.customer?.customer_name ?? inv.customer_name ?? '—'}</td>
                     <td className="px-6 py-3 text-gray-500">{fmtDate(inv.invoice_date)}</td>
                     <td className="px-6 py-3 text-right text-gray-700">{fmt(inv.gross_amount)}</td>
@@ -387,7 +436,16 @@ export default function SalesBillsTable() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
-            <span>{filtered.length} invoice{filtered.length !== 1 ? 's' : ''}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs">{totalCount} invoice{totalCount !== 1 ? 's' : ''} · page {page} of {totalPages}</span>
+              <select
+                value={pageSize}
+                onChange={e => { setPageSize(+e.target.value); setPage(1); }}
+                className="text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              >
+                {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
             <div className="flex items-center gap-1">
               <PageBtn onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>‹</PageBtn>
               {Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -576,6 +634,104 @@ export default function SalesBillsTable() {
             </div>
           )}
         </Modal>
+      )}
+
+      {/* ── Bill Detail Modal ── */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedInvoice(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl z-10 overflow-hidden max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4 shrink-0">
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="font-mono text-lg font-bold text-emerald-700">{selectedInvoice.invoice_number}</span>
+                  {selectedInvoice.customer?.customer_code && (
+                    <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-mono">
+                      {selectedInvoice.customer.customer_code}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-medium text-gray-800">{selectedInvoice.customer?.customer_name ?? selectedInvoice.customer_name}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{fmtDate(selectedInvoice.invoice_date)}</p>
+              </div>
+              <button onClick={() => setSelectedInvoice(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none mt-1">×</button>
+            </div>
+
+            {/* Amount summary */}
+            <div className="px-6 py-4 grid grid-cols-3 gap-3 shrink-0">
+              <div className="rounded-xl bg-gray-50 p-4 text-center">
+                <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Gross</p>
+                <p className="text-xl font-bold text-gray-800">₹{fmt(selectedInvoice.gross_amount)}</p>
+              </div>
+              <div className="rounded-xl bg-red-50 p-4 text-center">
+                <p className="text-xs text-red-400 uppercase tracking-wide mb-1">Discount</p>
+                <p className="text-xl font-bold text-red-600">₹{fmt(selectedInvoice.discount)}</p>
+              </div>
+              <div className="rounded-xl bg-emerald-50 p-4 text-center">
+                <p className="text-xs text-emerald-500 uppercase tracking-wide mb-1">Net</p>
+                <p className="text-xl font-bold text-emerald-700">₹{fmt(selectedInvoice.net_amount)}</p>
+              </div>
+            </div>
+
+            {/* Items table */}
+            <div className="overflow-y-auto flex-1 px-6 pb-6">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                {(selectedInvoice.items ?? []).length} Line Item{(selectedInvoice.items ?? []).length !== 1 ? 's' : ''}
+              </p>
+              {selectedInvoice._loading ? (
+                <div className="flex justify-center py-10"><Spinner className="w-6 h-6 text-emerald-600" /></div>
+              ) : (selectedInvoice.items ?? []).length === 0 ? (
+                <p className="text-sm text-gray-400 italic text-center py-6">No items found for this invoice.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-left">Unit</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-right">Free</th>
+                      <th className="px-3 py-2 text-right">Rate</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                      <th className="px-3 py-2 text-left">Batch</th>
+                      <th className="px-3 py-2 text-left">Expiry</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {(selectedInvoice.items ?? []).map((item, i) => (
+                      <tr key={item.id ?? i} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2 font-medium text-gray-800">{item.product_name}</td>
+                        <td className="px-3 py-2 text-gray-500 text-xs">{item.unit || '—'}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{fmt(item.quantity)}</td>
+                        <td className="px-3 py-2 text-right text-gray-400">{fmt(item.free_quantity)}</td>
+                        <td className="px-3 py-2 text-right text-gray-600">₹{fmt(item.rate)}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-900">₹{fmt(item.amount)}</td>
+                        <td className="px-3 py-2 text-gray-400 text-xs font-mono">{item.batch || '—'}</td>
+                        <td className="px-3 py-2 text-gray-400 text-xs">{item.expiry || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-50 font-semibold text-gray-700 text-sm">
+                      <td className="px-3 py-2" colSpan={2}>Total</td>
+                      <td className="px-3 py-2 text-right">
+                        {fmt((selectedInvoice.items ?? []).reduce((s, i) => s + parseFloat(i.quantity || 0), 0))}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-400">
+                        {fmt((selectedInvoice.items ?? []).reduce((s, i) => s + parseFloat(i.free_quantity || 0), 0))}
+                      </td>
+                      <td className="px-3 py-2"></td>
+                      <td className="px-3 py-2 text-right text-emerald-700">
+                        ₹{fmt((selectedInvoice.items ?? []).reduce((s, i) => s + parseFloat(i.amount || 0), 0))}
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

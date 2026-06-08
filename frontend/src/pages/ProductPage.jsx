@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Topbar from '../components/Topbar';
 import Sidebar from '../components/Sidebar';
-import { apiFetch } from '../utils/api';
+import { apiFetch, parseError } from '../utils/api';
 
 const PAGE_SIZE = 10
 
@@ -153,8 +153,7 @@ const ProductPage = () => {
         fetchProducts()
         closeModal()
       } else {
-        const firstError = Object.values(data).flat()[0]
-        setError(firstError || 'Something went wrong.')
+        setError(parseError(data))
       }
     } catch {
       setError('Network error. Please try again.')

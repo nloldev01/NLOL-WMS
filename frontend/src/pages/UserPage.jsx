@@ -5,6 +5,16 @@ import { apiFetch } from '../utils/api';
 
 const PAGE_SIZE = 10
 
+const ROLE_DESCRIPTIONS = {
+  superadmin: 'Full access to everything including user management',
+  admin:      'Full operations access — no user management',
+  production: 'Raw materials, base product stock & production module',
+  assembly:   'Assembly orders, packaging & finished product stock',
+  sales:      'Sales dashboard, customers & bills — view finished stock',
+  warehouse:  'All three stock modules + inventory tools',
+  manager:    'View-only access across all operational modules',
+}
+
 const emptyForm = {
   firstname: '', lastname: '', username: '', email: '',
   phone: '', password: '', user_role_id: '', status: 'active'
@@ -22,6 +32,7 @@ const UserPage = () => {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
+  const [roleFilter, setRoleFilter]   = useState('')
 
   const [exportOpen, setExportOpen] = useState(false)
   const exportRef = useRef(null)
@@ -43,11 +54,14 @@ const UserPage = () => {
     fetchRoles() 
   }, [])
 
-  const filtered = users.filter(u =>
-    u.fullname?.toLowerCase().includes(search.toLowerCase()) ||
-    u.username?.toLowerCase().includes(search.toLowerCase()) ||
-    u.email?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = users.filter(u => {
+    const matchesSearch =
+      u.fullname?.toLowerCase().includes(search.toLowerCase()) ||
+      u.username?.toLowerCase().includes(search.toLowerCase()) ||
+      u.email?.toLowerCase().includes(search.toLowerCase())
+    const matchesRole = !roleFilter || u.user_role?.role === roleFilter
+    return matchesSearch && matchesRole
+  })
   
   const fetchUsers = async () => {
     setLoading(true);
@@ -183,6 +197,13 @@ const UserPage = () => {
   }
 
   const isSuperAdmin = currentUser?.role === 'superadmin'
+
+  const handleToggle2fa = async (user) => {
+    const action = user.is_2fa_enabled ? 'Disable' : 'Enable'
+    if (!window.confirm(`${action} 2FA for ${user.username}?`)) return
+    const res = await apiFetch(`/users/${user.id}/toggle-2fa/`, { method: 'POST' })
+    if (res?.ok) fetchUsers()
+  }
 
   const exportCSV = () => {
     const headers = ['No', 'Username', 'Full Name', 'Email', 'User Role', 'Status', 'Last Login']
@@ -343,12 +364,16 @@ const UserPage = () => {
                     className="pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 w-44"
                   />
                 </div>
-                <button className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50">
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4-2A1 1 0 018 17v-3.586L3.293 6.707A1 1 0 013 6V4z" />
-                  </svg>
-                  Filters
-                </button>
+                <select
+                  value={roleFilter}
+                  onChange={e => { setRoleFilter(e.target.value); setPage(1) }}
+                  className={`rounded-lg border px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300 ${
+                    roleFilter ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-300 text-gray-600'
+                  }`}
+                >
+                  <option value="">All Roles</option>
+                  {roles.map(r => <option key={r.id} value={r.role}>{r.role}</option>)}
+                </select>
               </div>
             </div>
 
@@ -381,7 +406,27 @@ const UserPage = () => {
                       <td className="px-6 py-3 text-gray-700">{user.username}</td>
                       <td className="px-6 py-3 font-medium text-gray-900">{user.fullname}</td>
                       <td className="px-6 py-3 text-gray-500">{user.email}</td>
-                      <td className="px-6 py-3 text-gray-500">{user.user_role?.role || '—'}</td>
+                      <td className="px-6 py-3">
+                        {user.user_role?.role ? (
+                          <div>
+                            <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${
+                              user.user_role.role === 'superadmin' ? 'bg-purple-100 text-purple-700' :
+                              user.user_role.role === 'admin'      ? 'bg-blue-100 text-blue-700' :
+                              user.user_role.role === 'sales'      ? 'bg-orange-100 text-orange-700' :
+                              user.user_role.role === 'warehouse'  ? 'bg-cyan-100 text-cyan-700' :
+                              user.user_role.role === 'manager'    ? 'bg-indigo-100 text-indigo-700' :
+                              user.user_role.role === 'production' ? 'bg-yellow-100 text-yellow-700' :
+                              user.user_role.role === 'assembly'   ? 'bg-green-100 text-green-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>{user.user_role.role}</span>
+                            {ROLE_DESCRIPTIONS[user.user_role.role] && (
+                              <p className="text-[10px] text-gray-400 mt-0.5 max-w-[180px] truncate" title={ROLE_DESCRIPTIONS[user.user_role.role]}>
+                                {ROLE_DESCRIPTIONS[user.user_role.role]}
+                              </p>
+                            )}
+                          </div>
+                        ) : '—'}
+                      </td>
                       <td className="px-6 py-3 text-gray-500">{user.phone || '—'}</td>
                       <td className="px-6 py-3">
                         <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -398,13 +443,25 @@ const UserPage = () => {
                           : '—'}
                       </td>
                       <td className="px-6 py-3">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <button
                             onClick={() => openEdit(user)}
                             className="rounded-md bg-green-500 px-3 py-1 text-xs font-medium text-white hover:bg-green-600"
                           >
                             Edit
                           </button>
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => handleToggle2fa(user)}
+                              className={`rounded-md px-3 py-1 text-xs font-medium text-white ${
+                                user.is_2fa_enabled
+                                  ? 'bg-amber-500 hover:bg-amber-600'
+                                  : 'bg-blue-500 hover:bg-blue-600'
+                              }`}
+                            >
+                              {user.is_2fa_enabled ? 'Disable 2FA' : 'Enable 2FA'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -543,14 +600,23 @@ const UserPage = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">User Role *</label>
-                  <select 
-                    name="user_role_id" 
-                    value={form.user_role_id} 
+                  <select
+                    name="user_role_id"
+                    value={form.user_role_id}
                     onChange={handleChange}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300">
                     <option value="">Select role</option>
                     {roles.map(r => <option key={r.id} value={r.id}>{r.role}</option>)}
                   </select>
+                  {form.user_role_id && (() => {
+                    const selectedRole = roles.find(r => String(r.id) === String(form.user_role_id))
+                    const desc = selectedRole ? ROLE_DESCRIPTIONS[selectedRole.role] : null
+                    return desc ? (
+                      <p className="mt-1.5 text-[11px] text-gray-500 bg-gray-50 rounded-md px-2 py-1.5 border border-gray-100">
+                        {desc}
+                      </p>
+                    ) : null
+                  })()}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">User Status</label>

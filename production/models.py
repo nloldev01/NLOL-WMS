@@ -1,4 +1,5 @@
 from django.db import models
+from .encryption import EncryptedDecimalField, EncryptedTextField
 
 class Recipe(models.Model):
     product = models.ForeignKey(
@@ -21,15 +22,16 @@ class Recipe(models.Model):
 
 class RecipeItem(models.Model):
     recipe = models.ForeignKey(
-        Recipe, 
-        related_name='items', 
+        Recipe,
+        related_name='items',
         on_delete=models.CASCADE
     )
     material = models.ForeignKey(
-        'master_data.RawMaterialAndConsumable', 
+        'master_data.RawMaterialAndConsumable',
         on_delete=models.PROTECT
     )
-    quantity = models.DecimalField(max_digits=14, decimal_places=4)
+    quantity = EncryptedDecimalField()
+    encrypted_material_name = EncryptedTextField(blank=True, default='')
 
     class Meta:
         db_table = 'production_recipe_items'

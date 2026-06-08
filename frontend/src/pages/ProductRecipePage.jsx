@@ -1,7 +1,10 @@
 ﻿import { useState, useEffect } from 'react';
 import Topbar from '../components/Topbar';
 import Sidebar from '../components/Sidebar';
-import { apiFetch } from '../utils/api';
+import { apiFetch, parseError, hasAccess } from '../utils/api';
+
+// Only 'full' access can create/edit recipes; 'view' (manager) is read-only
+const canEdit = hasAccess('production_recipes', 'full');
 
 const ProductRecipePage = () => {
   const [recipes, setRecipes] = useState([]);
@@ -153,7 +156,7 @@ const ProductRecipePage = () => {
         setIsEditing(false);
       } else {
         const data = await res.json();
-        setError(Object.values(data).flat()[0] || 'Something went wrong.');
+        setError(parseError(data));
       }
     } catch (err) {
       setError('Network error. Please try again.');
@@ -173,15 +176,20 @@ const ProductRecipePage = () => {
             {/* Left Sidebar: Recipe List */}
             <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
               <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Recipes</h2>
-                <button 
-                  onClick={startCreate}
-                  className="p-1.5 rounded-full bg-orange-500 text-white hover:bg-orange-600 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Recipes</h2>
+                  <p className="text-[9px] text-orange-500 font-semibold uppercase tracking-widest mt-0.5">Confidential</p>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={startCreate}
+                    className="p-1.5 rounded-full bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
               {/* Search Bar */}
@@ -233,49 +241,74 @@ const ProductRecipePage = () => {
               {!isEditing && selectedRecipe ? (
                 <div className="p-8 max-w-4xl mx-auto">
                   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center">
+
+                    {/* Header */}
+                    <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-start">
                       <div>
-                        <div className="flex items-center gap-3 mb-1">
+                        <div className="flex items-center gap-3 mb-2">
                           <h1 className="text-2xl font-bold text-gray-900">{selectedRecipe.name}</h1>
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${selectedRecipe.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                             {selectedRecipe.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-500 uppercase tracking-wide font-semibold">{selectedRecipe.product_name}</p>
+                        {/* "Produces" callout */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Produces</span>
+                          <svg className="w-3.5 h-3.5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                          </svg>
+                          <span className="text-sm font-bold text-orange-600">{selectedRecipe.product_name}</span>
+                          {selectedRecipe.product_unit_symbol && (
+                            <span className="text-xs text-gray-400">({selectedRecipe.product_unit_symbol})</span>
+                          )}
+                        </div>
                       </div>
-                      <button 
-                        onClick={startEdit}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-bold transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Edit Recipe
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={startEdit}
+                          className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-bold transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit Recipe
+                        </button>
+                      )}
                     </div>
 
-                    <div className="p-0">
+                    {/* Ingredients label */}
+                    <div className="px-8 pt-5 pb-2">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        Ingredients — {selectedRecipe.items.length} material{selectedRecipe.items.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+
+                    <div className="pb-4">
                       <table className="w-full text-left">
-                        <thead className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                        <thead className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-y border-gray-100">
                           <tr>
-                            <th className="px-8 py-4 w-16">#</th>
-                            <th className="px-4 py-4">Material Name</th>
-                            <th className="px-8 py-4 text-right">Required Quantity</th>
+                            <th className="px-8 py-3 w-16">#</th>
+                            <th className="px-4 py-3">Ingredient</th>
+                            <th className="px-8 py-3 text-right">Required Quantity</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {selectedRecipe.items.map((item, idx) => (
-                            <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                              <td className="px-8 py-4 text-xs text-gray-400">{idx + 1}</td>
-                              <td className="px-4 py-4 text-sm font-medium text-gray-700">{item.material_name}</td>
-                              <td className="px-8 py-4 text-right font-mono font-bold text-gray-900">
-                                {item.quantity} <span className="text-[10px] text-gray-400 ml-1">{item.unit_symbol}</span>
+                            <tr key={item.id} className="hover:bg-orange-50/30 transition-colors">
+                              <td className="px-8 py-4 text-xs text-gray-300 font-mono">{String(idx + 1).padStart(2, '0')}</td>
+                              <td className="px-4 py-4">
+                                <span className="text-sm font-semibold text-gray-800">{item.material_name}</span>
+                              </td>
+                              <td className="px-8 py-4 text-right">
+                                <span className="font-mono font-bold text-gray-900 text-base">{parseFloat(item.quantity).toLocaleString()}</span>
+                                <span className="text-xs text-gray-400 ml-1.5">{item.unit_symbol}</span>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+
                   </div>
                 </div>
               ) : isEditing ? (

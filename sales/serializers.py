@@ -26,14 +26,13 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
-    items = InvoiceItemSerializer(many=True, read_only=True)
     customer_name = serializers.CharField(source='customer.customer_name', read_only=True)
 
     class Meta:
         model = Invoice
         fields = (
             'id', 'invoice_number', 'customer', 'customer_name', 'invoice_date',
-            'gross_amount', 'discount', 'net_amount', 'items', 'created_at', 'updated_at'
+            'gross_amount', 'discount', 'net_amount', 'created_at', 'updated_at'
         )
         read_only_fields = ('created_at', 'updated_at')
 

@@ -22,9 +22,9 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'fullname', 'username', 'email',
             'user_role', 'user_role_id', 'phone', 'status',
-            'last_login_date', 'ip', 'password'
+            'is_2fa_enabled', 'last_login_date', 'ip', 'password'
         ]
-        read_only_fields = ['last_login_date']
+        read_only_fields = ['last_login_date', 'is_2fa_enabled']
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
