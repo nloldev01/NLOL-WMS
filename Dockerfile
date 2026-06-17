@@ -20,9 +20,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
-# collectstatic needs SECRET_KEY and DB_PASSWORD defined; use throwaway values at build time
-RUN SECRET_KEY=build-placeholder DB_PASSWORD=build-placeholder python manage.py collectstatic --no-input
+# collectstatic needs SECRET_KEY, DB_PASSWORD, and RECIPE_ENCRYPTION_KEY defined; use throwaway values at build time
+RUN SECRET_KEY=build-placeholder DB_PASSWORD=build-placeholder RECIPE_ENCRYPTION_KEY=build-placeholder python manage.py collectstatic --no-input
 
 EXPOSE 8000
 
-CMD ["gunicorn", "nlol_wms.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "120"]
+COPY start.sh ./
+RUN chmod +x start.sh
+
+CMD ["./start.sh"]
