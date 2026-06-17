@@ -17,13 +17,14 @@ def is_superadmin(user):
 
 
 @api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
 def user_list(request):
-    # GET — list all users
+    # GET — list all users (superadmin only)
     if request.method == 'GET':
-        if not request.user.is_authenticated:
+        if not is_superadmin(request.user):
             return Response(
-                {'error': 'Authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
+                {'error': 'Only superadmin can list users'},
+                status=status.HTTP_403_FORBIDDEN
             )
         users = User.objects.select_related('user_role').all()
         serializer = UserSerializer(users, many=True)
@@ -38,8 +39,23 @@ def user_list(request):
             )
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            user = serializer.save()
+            # Auto-create a linked Customer record for dealer users
+            if user.user_role.role == 'dealer':
+                from sales.models import Customer
+                base_code = f"DLR-{user.username.upper()}"[:50]
+                code = base_code
+                counter = 1
+                while Customer.objects.filter(customer_code=code).exists():
+                    code = f"{base_code[:46]}-{counter}"
+                    counter += 1
+                Customer.objects.create(
+                    customer_code=code,
+                    customer_name=user.fullname,
+                    customer_type='dealer',
+                    user=user,
+                )
+            return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -56,8 +72,19 @@ def user_detail(request, pk):
         serializer = UserSerializer(user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    # PUT — update user
+    # PUT — update user (own profile or superadmin only)
     if request.method == 'PUT':
+        if request.user.pk != user.pk and not is_superadmin(request.user):
+            return Response(
+                {'error': 'You can only update your own profile'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        # Only superadmin can change roles
+        if 'user_role_id' in request.data and not is_superadmin(request.user):
+            return Response(
+                {'error': 'Only superadmin can change user roles'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         serializer = UserSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -86,6 +113,7 @@ def toggle_2fa(request, pk):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def role_list(request):
     roles = UserRole.objects.all()
     serializer = UserRoleSerializer(roles, many=True)
@@ -142,6 +170,20 @@ def role_permissions_reset_defaults(request):
     from django.core.management import call_command
     call_command('seed_permissions', reset=True)
     return Response({'message': 'Permissions reset to defaults'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dealer_users_list(request):
+    """List all active users with role='dealer', including their linked Customer info."""
+    users = (
+        User.objects
+        .select_related('user_role')
+        .filter(user_role__role='dealer', status=User.STATUS_ACTIVE)
+        .order_by('fullname')
+    )
+    serializer = UserSerializer(users, many=True)
+    return Response(serializer.data)
 
 
 @api_view(['POST'])

@@ -1,5 +1,8 @@
 from django.db import models
+from django.contrib.auth import get_user_model
 from django.utils import timezone
+
+User = get_user_model()
 
 
 class BatchCounter(models.Model):
@@ -119,3 +122,60 @@ class LPNCounter(models.Model):
 
     class Meta:
         db_table = 'inventory_lpn_counter'
+
+
+# ── Pallet ────────────────────────────────────────────────────────────────────
+
+class Pallet(models.Model):
+    """
+    Universal grouping of batches under a single scannable QR code.
+    Pallets are reference/grouping shortcuts, NOT authoritative stock records.
+    Any movement (dispatch, transfer in/out, etc.) can scan a pallet QR to
+    bulk-load all associated items. Each operation then picks the batch types
+    it needs (e.g. dispatch only uses FIN batches).
+    """
+    pallet_code = models.CharField(max_length=50, unique=True)
+    notes       = models.TextField(blank=True)
+    is_sealed   = models.BooleanField(default=False)
+    created_by  = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='pallets')
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'inventory_pallets'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.pallet_code
+
+    @classmethod
+    def generate_pallet_code(cls):
+        today    = timezone.localdate()
+        date_str = today.strftime("%Y%m%d")
+        prefix   = f"PAL-{date_str}-"
+        last     = (
+            cls.objects
+            .filter(pallet_code__startswith=prefix)
+            .order_by('-pallet_code')
+            .values_list('pallet_code', flat=True)
+            .first()
+        )
+        seq = int(last.split('-')[-1]) + 1 if last else 1
+        return f"{prefix}{seq:04d}"
+
+
+class PalletItem(models.Model):
+    """
+    One LPN + quantity on a pallet.
+    LPN is the source of truth for physical location; batch is derived via lpn.batch.
+    """
+    pallet   = models.ForeignKey(Pallet, on_delete=models.CASCADE, related_name='items')
+    lpn      = models.ForeignKey(LPN, on_delete=models.PROTECT, related_name='pallet_items')
+    quantity = models.DecimalField(max_digits=14, decimal_places=4)
+
+    class Meta:
+        db_table        = 'inventory_pallet_items'
+        unique_together = [('pallet', 'lpn')]
+
+    def __str__(self):
+        return f"{self.pallet.pallet_code} — {self.lpn.lpn_code} x{self.quantity}"

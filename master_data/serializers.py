@@ -144,12 +144,10 @@ class ProductGroupSerializer(serializers.ModelSerializer):
 # ── Product Sub-Group ────────────────────────────────────────────────────────
 
 class ProductSubGroupSerializer(serializers.ModelSerializer):
-    group_name = serializers.CharField(source='group.name', read_only=True)
-
     class Meta:
         model = ProductSubGroup
-        fields = ['id', 'name', 'group', 'group_name']
-        read_only_fields = ['id', 'group_name']
+        fields = ['id', 'name']
+        read_only_fields = ['id']
 
 
 # ── Product Segment ──────────────────────────────────────────────────────────
@@ -233,7 +231,7 @@ class FinishedProductVariantSerializer(serializers.ModelSerializer):
             'volume', 'volume_unit', 'volume_unit_name', 'volume_unit_symbol',
             'secondary_unit', 'secondary_unit_name', 'secondary_unit_symbol',
             'capacity_value', 'base_quantity',
-            'sku_code', 'is_available',
+            'name', 'product_code', 'sku_code', 'is_available',
             'added_sticker', 'sticker_name',
             'display_label',
             'created_at', 'updated_at',

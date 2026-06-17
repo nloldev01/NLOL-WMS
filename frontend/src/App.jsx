@@ -27,9 +27,16 @@ import FinishedProductsPage from './pages/FinishedProductsPage';
 import FinishedProductStockPage from './pages/FinishedProductStockPage';
 import FinishedProductMovementPage from './pages/FinishedProductMovementPage';
 import PackagingOrdersPage from './pages/PackagingOrdersPage';
-import AssemblyOrdersPage from './pages/AssemblyOrdersPage';
+import AssemblyOrdersPage from './pages/AssemblyOrdersPage'
+import RefillOrdersPage from './pages/RefillOrdersPage';
+import DispatchOrdersPage from './pages/DispatchOrdersPage';
+import DealerOrdersPage from './pages/DealerOrdersPage';
+import DealerStockPage from './pages/DealerStockPage';
+import DealerSalesPage from './pages/DealerSalesPage';
 import RolesPermissionsPage from './pages/RolesPermissionsPage';
 import BackupRestorePage from './pages/BackupRestorePage';
+import PalletsPage from './pages/PalletsPage';
+import ScannerPage from './pages/ScannerPage';
 
 export const BASE_URL = 'http://localhost:8000/api';
 
@@ -72,6 +79,8 @@ function App() {
         <Route path="/stock/batches"            element={<PR module="inventory_tools"><BatchesPage /></PR>} />
         <Route path="/stock/inventory-explorer" element={<PR module="inventory_tools"><InventoryExplorerPage /></PR>} />
         <Route path="/stock/lpn-finder"         element={<PR module="inventory_tools"><LPNFinderPage /></PR>} />
+        <Route path="/inventory/pallets"        element={<PR module="inventory_core"><PalletsPage /></PR>} />
+        <Route path="/inventory/scanner"        element={<PR module="inventory_core"><ScannerPage /></PR>} />
 
         {/* Production */}
         <Route path="/production/dashboard"     element={<PR module="production"><ProductionDashboardPage /></PR>} />
@@ -85,6 +94,7 @@ function App() {
         <Route path="/packaging/finished-products"      element={<PR module="packaging"><FinishedProductsPage /></PR>} />
         <Route path="/packaging/orders"                 element={<PR module="packaging"><PackagingOrdersPage /></PR>} />
         <Route path="/packaging/assembly"               element={<PR module="assembly"><AssemblyOrdersPage /></PR>} />
+        <Route path="/packaging/refill-orders"          element={<PR module="refill"><RefillOrdersPage /></PR>} />
         <Route path="/packaging/finished-product-stock" element={<PR module="finished_product_stock"><FinishedProductStockPage /></PR>} />
         <Route path="/packaging/finished-product-logs"  element={<PR module="finished_product_stock"><FinishedProductMovementPage /></PR>} />
 
@@ -93,6 +103,10 @@ function App() {
         <Route path="/sales/dashboard"  element={<PR module="sales"><SalesDashboardPage /></PR>} />
         <Route path="/sales/customers"  element={<PR module="sales"><SalesCustomersPage /></PR>} />
         <Route path="/sales/bills"      element={<PR module="sales"><SalesBillsPage /></PR>} />
+        <Route path="/sales/dispatch"       element={<PR module="dispatch"><DispatchOrdersPage /></PR>} />
+        <Route path="/sales/dealer-orders" element={<PR module="dispatch"><DealerOrdersPage /></PR>} />
+        <Route path="/sales/dealer-stock"  element={<PR module="dispatch"><DealerStockPage /></PR>} />
+        <Route path="/sales/dealer-sales"  element={<PR module="dispatch"><DealerSalesPage /></PR>} />
 
         {/* Error pages */}
         <Route path="/403" element={<ErrorPage type="403" />} />

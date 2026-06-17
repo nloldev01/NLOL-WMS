@@ -33,17 +33,18 @@ class ProductStock(models.Model):
 class ProductStockLog(models.Model):
 
     MOVEMENT_CHOICES = [
-        ('production',     'Production'),
-        ('packaging_usage','Packaging Usage'),
-        ('sale',           'Sale / Issue'),
-        ('sale_return',    'Customer Return'),
-        ('purchase',       'Purchase / Receipt'),
-        ('purchase_return','Return to Supplier'),
-        ('transfer_in',    'Transfer In'),
-        ('transfer_out',   'Transfer Out'),
-        ('adjustment',     'Adjustment (Out)'),
-        ('adjustment_in',  'Adjustment (In)'),
-        ('wastage',        'Wastage'),
+        ('production',      'Production'),
+        ('packaging_usage', 'Packaging Usage'),
+        ('sale',            'Sale / Issue'),
+        ('sale_return',     'Customer Return'),
+        ('purchase',        'Purchase / Receipt'),
+        ('purchase_return', 'Return to Supplier'),
+        ('transfer_in',     'Transfer In'),
+        ('transfer_out',    'Transfer Out'),
+        ('adjustment',      'Adjustment (Out)'),
+        ('adjustment_in',   'Adjustment (In)'),
+        ('wastage',         'Wastage'),
+        ('refill_recovery', 'Refill Recovery (Unpack)'),
     ]
 
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='movement_logs')
@@ -82,7 +83,7 @@ class ProductStockLog(models.Model):
     # -------------------------------
     # Inbound vs Outbound logic
     # -------------------------------
-    INBOUND_TYPES = {'production', 'sale_return', 'purchase', 'transfer_in', 'adjustment_in'}
+    INBOUND_TYPES = {'production', 'sale_return', 'purchase', 'transfer_in', 'adjustment_in', 'refill_recovery'}
     OUTBOUND_TYPES = {'sale', 'purchase_return', 'transfer_out', 'wastage', 'adjustment', 'packaging_usage'}
 
     @classmethod
@@ -252,10 +253,13 @@ class FinishedProductStockLog(models.Model):
         ('adjustment',           'Adjustment (Out)'),
         ('adjustment_in',        'Adjustment (In)'),
         ('wastage',              'Wastage'),
+        ('refill_in',            'Refill / Repack In'),
+        ('refill_out',           'Refill / Repack Out'),
+        ('dispatch_out',         'Dispatch to Dealer'),
     ]
 
-    INBOUND_TYPES  = {'packaging_production', 'purchase', 'sale_return', 'transfer_in', 'adjustment_in'}
-    OUTBOUND_TYPES = {'sale', 'purchase_return', 'transfer_out', 'adjustment', 'wastage'}
+    INBOUND_TYPES  = {'packaging_production', 'purchase', 'sale_return', 'transfer_in', 'adjustment_in', 'refill_in'}
+    OUTBOUND_TYPES = {'sale', 'purchase_return', 'transfer_out', 'adjustment', 'wastage', 'refill_out', 'dispatch_out'}
 
     finished_product_variant = models.ForeignKey(FinishedProductVariant, null=True, blank=True, on_delete=models.PROTECT, related_name='movement_logs')
     batch = models.ForeignKey(Batch, on_delete=models.PROTECT, null=True, blank=True, related_name='finished_product_stock_logs')

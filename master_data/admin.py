@@ -42,8 +42,8 @@ class ProductGroupAdmin(admin.ModelAdmin):
 
 @admin.register(ProductSubGroup)
 class ProductSubGroupAdmin(admin.ModelAdmin):
-    list_display = ('name', 'group')
-    search_fields = ('name', 'group__name')
+    list_display = ('name',)
+    search_fields = ('name',)
 
 
 @admin.register(ProductSegment)

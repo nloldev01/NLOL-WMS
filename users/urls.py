@@ -3,11 +3,12 @@ from .views import (
     user_list, user_detail, role_list, logout_view,
     system_modules_list, role_permissions_list,
     role_permissions_bulk_update, role_permissions_reset_defaults,
-    toggle_2fa,
+    toggle_2fa, dealer_users_list,
 )
 
 urlpatterns = [
     path('users/', user_list),
+    path('users/dealers/', dealer_users_list),
     path('users/<int:pk>/', user_detail),
     path('users/<int:pk>/toggle-2fa/', toggle_2fa),
     path('roles/', role_list),

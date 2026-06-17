@@ -247,9 +247,11 @@ class ProductGroup(models.Model):
 class ProductSubGroup(models.Model):
     name = models.CharField(max_length=255, unique=True)
     group = models.ForeignKey(
-        ProductGroup,
-        on_delete=models.PROTECT,
-        related_name='sub_groups'
+        'ProductGroup',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='subgroups',
     )
 
     class Meta:
@@ -271,7 +273,7 @@ class ProductSegment(models.Model):
         return self.name
 
 class Product(models.Model):
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True, null=True)
     is_available = models.BooleanField(default=True)
     unit = models.ForeignKey(
@@ -364,6 +366,8 @@ class FinishedProductVariant(models.Model):
     )
     capacity_value = models.DecimalField(max_digits=14, decimal_places=4, default=0, null=True, blank=True)
     base_quantity  = models.DecimalField(max_digits=14, decimal_places=4)
+    name           = models.CharField(max_length=255, blank=True, null=True)
+    product_code   = models.CharField(max_length=50, blank=True, null=True)
     sku_code       = models.CharField(max_length=50, unique=True, blank=True, null=True)
     is_available   = models.BooleanField(default=True)
     added_sticker  = models.BooleanField(default=False)

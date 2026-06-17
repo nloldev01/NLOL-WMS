@@ -57,7 +57,7 @@ const Sidebar = () => {
       { id: 'master-data', label: 'Master Data', path: '/master-data' },
       { id: 'products',    label: 'Base Products', path: '/products' },
     ] : []),
-    ...(hasAccess('raw_material_stock') || hasAccess('base_product_stock') || hasAccess('inventory_tools') ? [{
+    ...(hasAccess('raw_material_stock') || hasAccess('base_product_stock') || hasAccess('inventory_tools') || hasAccess('inventory_core') ? [{
       id: 'stocks',
       label: 'Stocks',
       children: [
@@ -68,6 +68,8 @@ const Sidebar = () => {
         ...(hasAccess('inventory_tools')     ? [{ id: 'batches', label: 'Batches', path: '/stock/batches' }] : []),
         ...(hasAccess('inventory_tools')     ? [{ id: 'inventory-explorer', label: 'Inventory Explorer', path: '/stock/inventory-explorer' }] : []),
         ...(hasAccess('inventory_tools')     ? [{ id: 'lpn-finder', label: 'LPN Finder', path: '/stock/lpn-finder' }] : []),
+        ...(hasAccess('inventory_core')      ? [{ id: 'pallets', label: 'Pallets', path: '/inventory/pallets' }] : []),
+        ...(hasAccess('inventory_core')      ? [{ id: 'scanner',        label: 'Scanner',        path: '/inventory/scanner' }] : []),
       ],
     }] : []),
     ...(hasAccess('users') ? [{
@@ -97,17 +99,22 @@ const Sidebar = () => {
         ...(hasAccess('packaging')              ? [{ id: 'finished-products', label: 'Finished Products', path: '/packaging/finished-products' }] : []),
         ...(hasAccess('packaging')              ? [{ id: 'packaging-orders', label: 'Packaging Orders', path: '/packaging/orders' }] : []),
         ...(hasAccess('assembly')               ? [{ id: 'assembly-orders', label: 'Assembly', path: '/packaging/assembly' }] : []),
+        ...(hasAccess('refill')                 ? [{ id: 'refill-orders',   label: 'Refill Orders', path: '/packaging/refill-orders' }] : []),
         ...(hasAccess('finished_product_stock') ? [{ id: 'finished-product-stock', label: 'FP Stock', path: '/packaging/finished-product-stock' }] : []),
         ...(hasAccess('finished_product_stock') ? [{ id: 'finished-product-logs', label: 'FP Movements', path: '/packaging/finished-product-logs' }] : []),
       ],
     }] : []),
-    ...(hasAccess('sales') ? [{
+    ...(hasAccess('sales') || hasAccess('dispatch') ? [{
       id: 'sales',
       label: 'Sales',
       children: [
-        { id: 'sales-dashboard', label: 'Dashboard', path: '/sales/dashboard' },
-        { id: 'sales-customers', label: 'Customers', path: '/sales/customers' },
-        { id: 'sales-bills', label: 'Sales Bills', path: '/sales/bills' },
+        ...(hasAccess('sales')    ? [{ id: 'sales-dashboard', label: 'Dashboard',      path: '/sales/dashboard' }] : []),
+        ...(hasAccess('sales')    ? [{ id: 'sales-customers', label: 'Customers',       path: '/sales/customers' }] : []),
+        ...(hasAccess('sales')    ? [{ id: 'sales-bills',     label: 'Sales Bills',     path: '/sales/bills' }] : []),
+        ...(hasAccess('dispatch') ? [{ id: 'dispatch',        label: 'Dispatch Orders', path: '/sales/dispatch' }] : []),
+        ...(hasAccess('dispatch') ? [{ id: 'dealer-orders', label: 'Dealer Orders',   path: '/sales/dealer-orders' }] : []),
+        ...(hasAccess('dispatch') ? [{ id: 'dealer-stock',  label: 'Dealer Stock',    path: '/sales/dealer-stock' }] : []),
+        ...(hasAccess('dispatch') ? [{ id: 'dealer-sales',  label: 'Dealer Sales',    path: '/sales/dealer-sales' }] : []),
       ],
     }] : []),
     ...(getUserRole() === 'superadmin' ? [{

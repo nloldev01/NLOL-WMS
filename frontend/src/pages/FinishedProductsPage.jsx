@@ -16,7 +16,12 @@ const MATERIAL_CHOICES = [
 ]
 const MATERIAL_MAP = Object.fromEntries(MATERIAL_CHOICES.map(m => [m.value, m.label]))
 
-const PREDEFINED_SIZES = [1, 2, 3, 4, 5, 8, 10, 12, 15, 20]
+const PREDEFINED_SIZES = [
+  0.175, 0.2, 0.25, 0.35, 0.5, 0.7, 0.8,
+  1, 1.2, 1.6, 1.7, 2, 2.5, 3, 3.5, 4, 5,
+  6, 7, 7.5, 8, 8.5, 9.5, 10, 12, 13, 15, 18, 20,
+  50, 150, 180, 200, 205, 209, 210, 230,
+]
 
 const CONTAINER_ICONS = {
   bottle:  'M10 2h4v3.5c0 .5.2 1 .5 1.4L16 9v10a1 1 0 01-1 1H9a1 1 0 01-1-1V9L9.5 6.9c.3-.4.5-.9.5-1.4V2z',
@@ -54,7 +59,8 @@ const emptyProductForm = {
 const emptyVariantForm = {
   unit: '', material: '', volume: '', volume_unit: '',
   secondary_unit: '', capacity_value: '', base_quantity: '',
-  sku_code: '', is_available: true, added_sticker: false, sticker_name: '',
+  name: '', product_code: '', sku_code: '',
+  is_available: true, added_sticker: false, sticker_name: '',
 }
 
 const FinishedProductsPage = () => {
@@ -91,6 +97,10 @@ const FinishedProductsPage = () => {
   const [variantForm, setVariantForm]       = useState(emptyVariantForm)
   const [variantError, setVariantError]     = useState('')
   const [variantSubmitting, setVariantSubmitting] = useState(false)
+
+  // inline product-code editing
+  const [editingCodeId, setEditingCodeId]     = useState(null)
+  const [editingCodeVal, setEditingCodeVal]   = useState('')
 
   // BOM modal
   const [bomVariant, setBomVariant]           = useState(null)
@@ -272,6 +282,8 @@ const FinishedProductsPage = () => {
       secondary_unit: variant.secondary_unit || '',
       capacity_value: variant.capacity_value || '',
       base_quantity: variant.base_quantity || '',
+      name: variant.name || '',
+      product_code: variant.product_code || '',
       sku_code: variant.sku_code || '',
       is_available: variant.is_available ?? true,
       added_sticker: variant.added_sticker ?? false,
@@ -314,8 +326,10 @@ const FinishedProductsPage = () => {
     if (variantForm.material)       payload.material       = variantForm.material
     if (variantForm.secondary_unit) payload.secondary_unit = parseInt(variantForm.secondary_unit)
     if (variantForm.capacity_value) payload.capacity_value = parseFloat(variantForm.capacity_value)
-    if (variantForm.sku_code.trim()) payload.sku_code      = variantForm.sku_code.trim()
-    if (variantForm.sticker_name.trim()) payload.sticker_name = variantForm.sticker_name.trim()
+    if (variantForm.sku_code.trim())      payload.sku_code      = variantForm.sku_code.trim()
+    if (variantForm.name.trim())          payload.name          = variantForm.name.trim()
+    if (variantForm.product_code.trim())  payload.product_code  = variantForm.product_code.trim()
+    if (variantForm.sticker_name.trim())  payload.sticker_name  = variantForm.sticker_name.trim()
 
     const endpoint = editVariant
       ? `/master-data/finished-product-variants/${editVariant.id}/`
@@ -341,6 +355,15 @@ const FinishedProductsPage = () => {
       fetchVariants(productId)
       fetchProducts()
     }
+  }
+
+  const saveProductCode = async (variantId, productId, value) => {
+    setEditingCodeId(null)
+    const res = await apiFetch(`/master-data/finished-product-variants/${variantId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ product_code: value.trim() }),
+    })
+    if (res?.ok) fetchVariants(productId)
   }
 
   const openBomModal = async (variant) => {
@@ -630,6 +653,37 @@ const FinishedProductsPage = () => {
                                                   {volDisplay} {v.volume_unit_symbol?.toUpperCase()}
                                                 </span>
                                                 <span className="text-xs text-gray-400">{v.unit_name}</span>
+                                                {v.name && (
+                                                  <span className="text-xs text-gray-600 font-medium truncate max-w-[180px]" title={v.name}>{v.name}</span>
+                                                )}
+                                                {editingCodeId === v.id ? (
+                                                  <input
+                                                    autoFocus
+                                                    value={editingCodeVal}
+                                                    onChange={e => setEditingCodeVal(e.target.value)}
+                                                    onBlur={() => saveProductCode(v.id, item.id, editingCodeVal)}
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter') saveProductCode(v.id, item.id, editingCodeVal)
+                                                      if (e.key === 'Escape') setEditingCodeId(null)
+                                                    }}
+                                                    className="px-2 py-0.5 rounded-md font-mono text-[10px] text-blue-600 bg-blue-50 border border-blue-300 w-28 outline-none focus:ring-1 focus:ring-blue-400"
+                                                  />
+                                                ) : v.product_code ? (
+                                                  <button
+                                                    onClick={() => { setEditingCodeId(v.id); setEditingCodeVal(v.product_code) }}
+                                                    title="Click to edit product code"
+                                                    className="px-2 py-0.5 rounded-md font-mono text-[10px] text-blue-600 bg-blue-50 border border-blue-100 font-semibold hover:border-blue-300 hover:bg-blue-100 transition-colors"
+                                                  >
+                                                    {v.product_code}
+                                                  </button>
+                                                ) : (
+                                                  <button
+                                                    onClick={() => { setEditingCodeId(v.id); setEditingCodeVal('') }}
+                                                    className="px-2 py-0.5 rounded-md text-[10px] text-gray-400 bg-gray-50 border border-dashed border-gray-200 hover:border-blue-300 hover:text-blue-500 transition-colors"
+                                                  >
+                                                    + code
+                                                  </button>
+                                                )}
                                                 {v.sku_code && (
                                                   <span className="px-2 py-0.5 rounded-md font-mono text-[10px] text-purple-600 bg-purple-50 border border-purple-100 font-semibold">
                                                     {v.sku_code}
@@ -819,6 +873,16 @@ const FinishedProductsPage = () => {
                   <label className="block text-xs font-medium text-gray-600 mb-1">SKU Code</label>
                   <input name="sku_code" value={variantForm.sku_code} onChange={handleVariantChange} placeholder="e.g. OJ-500B" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Variant Name</label>
+                <input name="name" value={variantForm.name} onChange={handleVariantChange} placeholder="e.g. 0.5 KG CHASIS GREASE CAN" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Product Code</label>
+                <input name="product_code" value={variantForm.product_code} onChange={handleVariantChange} placeholder="e.g. E-G-150" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
               </div>
 
               <div className="rounded-lg border border-amber-100 bg-amber-50/40 p-4 space-y-3">

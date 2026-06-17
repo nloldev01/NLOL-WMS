@@ -104,7 +104,7 @@ const buildTree = (locations) => {
 // ─── QR Modal ────────────────────────────────────────────────────────────────
 const QRModal = ({ location, onClose }) => {
   const qrRef = useRef()
-  const qrData = { type: 'location', code: location.code || location.short_code }
+  const qrData = { type: 'location', id: location.id, code: location.short_code || location.code }
 
   const handleDownload = () => {
     const originalCanvas = qrRef.current?.querySelector('canvas')
@@ -118,7 +118,7 @@ const QRModal = ({ location, onClose }) => {
     measureCtx.font = nameFont
     const nameWidth = measureCtx.measureText(location.name).width
     measureCtx.font = codeFont
-    const codeWidth = measureCtx.measureText(location.code || location.short_code).width
+    const codeWidth = measureCtx.measureText(location.short_code || location.code).width
 
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
@@ -133,7 +133,7 @@ const QRModal = ({ location, onClose }) => {
     ctx.font = nameFont
     ctx.fillText(location.name, canvas.width / 2, originalCanvas.height + 30)
     ctx.font = codeFont
-    ctx.fillText(location.code || location.short_code, canvas.width / 2, originalCanvas.height + 55)
+    ctx.fillText(location.short_code || location.code, canvas.width / 2, originalCanvas.height + 55)
     const link = document.createElement('a')
     link.href = canvas.toDataURL('image/png')
     link.download = `Label-${location.short_code}.png`
@@ -153,7 +153,7 @@ const QRModal = ({ location, onClose }) => {
           </div>
           <div className="mt-4">
             <p className="text-md font-bold text-gray-800 leading-tight">{location.name}</p>
-            <p className="text-s font-mono font-bold text-gray-500 leading-tight">{location.code || location.short_code}</p>
+            <p className="text-s font-mono font-bold text-gray-500 leading-tight">{location.short_code || location.code}</p>
           </div>
         </div>
         <div className="px-6 py-4 border-t flex gap-2">
@@ -323,7 +323,7 @@ export default function LocationsTable() {
         const labelHeightInPx = 150
         const qrCanvas = document.createElement('canvas')
         qrCanvas.width = qrSizeInPx; qrCanvas.height = qrSizeInPx
-        const qrValue = JSON.stringify({ type: 'location', code: loc.code || loc.short_code })
+        const qrValue = JSON.stringify({ type: 'location', id: loc.id, code: loc.short_code || loc.code })
 
         QRCode.toCanvas(qrCanvas, qrValue, { width: qrSizeInPx, height: qrSizeInPx, margin: 0.8, errorCorrectionLevel: 'H' }, (err) => {
           if (err) { resolve(); return }
@@ -337,7 +337,7 @@ export default function LocationsTable() {
           const displayName = loc.name.length > 20 ? loc.name.substring(0, 18) + '..' : loc.name
           ctx.fillText(displayName, labelWidthPx / 2, qrSizeInPx + 45)
           ctx.font = '24px Monospace'
-          ctx.fillText(loc.code || loc.short_code, labelWidthPx / 2, qrSizeInPx + 90)
+          ctx.fillText(loc.short_code || loc.code, labelWidthPx / 2, qrSizeInPx + 90)
           const xPos = marginX + (col * (labelWidth + spacingX))
           const yPos = marginY + (row * (labelHeight + spacingY))
           const totalDisplayHeight = (qrSizeInPx + labelHeightInPx) / 3.78

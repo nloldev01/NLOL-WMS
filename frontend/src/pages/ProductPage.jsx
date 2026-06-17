@@ -15,6 +15,7 @@ const emptyForm = {
 const ProductPage = () => {
   const [products, setProducts] = useState([])
   const [units, setUnits] = useState([])
+  const [defaultUnitId, setDefaultUnitId] = useState('')
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -83,6 +84,11 @@ const ProductPage = () => {
     }
   }
 
+  useEffect(() => {
+    const ltr = units.find(u => u.symbol?.toLowerCase() === 'ltr')
+    if (ltr) setDefaultUnitId(String(ltr.id))
+  }, [units])
+
   const secondaryUnits = units.filter(u => u.unit_type === 'secondary')
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -93,7 +99,7 @@ const ProductPage = () => {
 
   const openAdd = () => {
     setEditProduct(null)
-    setForm(emptyForm)
+    setForm({ ...emptyForm, unit_id: defaultUnitId })
     setError('')
     setModalOpen(true)
   }

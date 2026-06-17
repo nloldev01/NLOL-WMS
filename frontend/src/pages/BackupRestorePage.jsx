@@ -28,18 +28,15 @@ const formatDate = (iso) => {
   return new Date(iso).toLocaleString()
 }
 
-// Matches the "NLOL WMS DB Backup" Windows Task Scheduler job: weekly, Sundays at 02:00,
+// Matches the "NLOL WMS Daily Backup" Windows Task Scheduler job: daily at 19:00,
 // with StartWhenAvailable so a missed run fires as soon as the machine is back on.
-const SCHEDULE_DAY_OF_WEEK = 0 // Sunday
-const SCHEDULE_HOUR = 2
+const SCHEDULE_HOUR = 19
 
 const getNextScheduledRun = () => {
   const now = new Date()
   const next = new Date(now)
   next.setHours(SCHEDULE_HOUR, 0, 0, 0)
-  let daysUntil = (SCHEDULE_DAY_OF_WEEK - next.getDay() + 7) % 7
-  if (daysUntil === 0 && next <= now) daysUntil = 7
-  next.setDate(next.getDate() + daysUntil)
+  if (next <= now) next.setDate(next.getDate() + 1)
   return next
 }
 
@@ -177,7 +174,7 @@ const BackupRestorePage = () => {
 
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 mb-4 text-sm text-gray-600 flex flex-wrap items-center gap-x-6 gap-y-1">
             <span className="font-semibold text-gray-800">Scheduled backups:</span>
-            <span>Weekly — every Sunday at 2:00 AM</span>
+            <span>Daily — every day at 7:00 PM</span>
             <span>Next run: <strong className="text-gray-800">{getNextScheduledRun().toLocaleString()}</strong></span>
             <span className="text-xs text-gray-400">If the system is off at the scheduled time, it runs automatically as soon as it's back on.</span>
           </div>
