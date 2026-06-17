@@ -12,3 +12,4 @@ psycopg2-binary==2.9.10
 pandas
 openpyxl
 pyotp==2.9.0
+qrcode[pil]==8.1
