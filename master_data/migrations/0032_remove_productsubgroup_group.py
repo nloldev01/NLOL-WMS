@@ -8,15 +8,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # The group_id column was never present in the actual DB,
-        # so we only update Django's state without issuing any SQL.
-        migrations.SeparateDatabaseAndState(
-            database_operations=[],
-            state_operations=[
-                migrations.RemoveField(
-                    model_name='productsubgroup',
-                    name='group',
-                ),
-            ],
+        migrations.RemoveField(
+            model_name='productsubgroup',
+            name='group',
         ),
     ]
