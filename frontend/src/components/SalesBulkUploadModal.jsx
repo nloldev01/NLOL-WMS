@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { BASE_URL } from '../utils/api'
 
 const SalesBulkUploadModal = ({ onClose, onUploadSuccess }) => {
   const [dragActive, setDragActive] = useState(false)
@@ -66,7 +67,7 @@ const SalesBulkUploadModal = ({ onClose, onUploadSuccess }) => {
       formData.append('file', file)
 
       const token = localStorage.getItem('access') || sessionStorage.getItem('access')
-      const response = await fetch('http://localhost:8000/api/sales/customers/bulk-upload/', {
+      const response = await fetch(`${BASE_URL}/sales/customers/bulk-upload/`, {
         method: 'POST',
         body: formData,
         headers: {
@@ -136,7 +137,7 @@ const SalesBulkUploadModal = ({ onClose, onUploadSuccess }) => {
               Download the template for an easy import
             </span>
             <a
-              href="http://localhost:8000/api/sales/customers/bulk-upload/template/"
+              href={`${BASE_URL}/sales/customers/bulk-upload/template/`}
               download="customers_template.csv"
               className="text-xs font-medium text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors whitespace-nowrap ml-3"
             >

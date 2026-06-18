@@ -246,7 +246,7 @@ const Sidebar = () => {
         className={`sidebar md:hidden fixed left-0 top-0 h-screen w-72 bg-white border-r border-gray-200 py-5 shadow-lg overflow-y-auto z-50 transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="flex items-center justify-between mb-6 px-4">
-          <img src="/images/gulf-logo.svg" alt="Logo" className="h-10 w-10" />
+          <img src={`${import.meta.env.BASE_URL}images/gulf-logo.svg`} alt="Logo" className="h-10 w-10" />
           <button onClick={closeMobile} className="p-1 rounded-lg hover:bg-gray-100" aria-label="Close menu">
             <XMarkIcon className="w-6 h-6 text-gray-600" />
           </button>
@@ -264,7 +264,7 @@ const Sidebar = () => {
         onMouseLeave={handleMouseLeave}
       >
         <div className="flex items-center justify-center mb-6 px-4">
-          <img src="/images/gulf-logo.svg" alt="Logo" className="h-10 w-10" />
+          <img src={`${import.meta.env.BASE_URL}images/gulf-logo.svg`} alt="Logo" className="h-10 w-10" />
         </div>
         <ul className="space-y-4 px-2">
           {menuData.map((item) => (

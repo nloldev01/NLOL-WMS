@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BASE_URL } from '../utils/api'
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
@@ -52,7 +53,7 @@ const LoginPage = () => {
     setError('')
 
     try {
-      const response = await fetch('http://localhost:8000/api/login/', {
+      const response = await fetch(`${BASE_URL}/login/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -87,7 +88,7 @@ const LoginPage = () => {
 
   const handleStartSetup = async (token) => {
     try {
-      const response = await fetch('http://localhost:8000/api/setup-2fa/', {
+      const response = await fetch(`${BASE_URL}/setup-2fa/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -114,9 +115,9 @@ const LoginPage = () => {
     setLoading(true)
     setError('')
 
-    const endpoint = step === '2FA_SETUP' 
-      ? 'http://localhost:8000/api/verify-2fa-setup/' 
-      : 'http://localhost:8000/api/verify-2fa-login/'
+    const endpoint = step === '2FA_SETUP'
+      ? `${BASE_URL}/verify-2fa-setup/`
+      : `${BASE_URL}/verify-2fa-login/`
 
     try {
       const response = await fetch(endpoint, {
@@ -299,7 +300,7 @@ const LoginPage = () => {
     <div className="min-h-screen bg-slate-100">
       <div className="grid grid-cols-1 md:grid-cols-2 min-h-screen">
         {/* Left side - Background only */}
-        <div className="hidden md:flex items-center justify-center bg-cover bg-center" style={{ backgroundImage: "url('/images/login-background.jpg')"}}>
+        <div className="hidden md:flex items-center justify-center bg-cover bg-center" style={{ backgroundImage: `url('${import.meta.env.BASE_URL}images/login-background.jpg')`}}>
           
         </div>
 
@@ -309,7 +310,7 @@ const LoginPage = () => {
             <div className="mb-8 text-center">
               <img
                 className="mx-auto h-20 w-auto"
-                src="/images/nepal-logo.svg"
+                src={`${import.meta.env.BASE_URL}images/nepal-logo.svg`}
                 alt="Logo"
               />
               <h1 className="mt-4 text-4xl font-bold text-gray-900">

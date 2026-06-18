@@ -4,7 +4,7 @@ import Sidebar from '../components/Sidebar';
 import CustomersTable from '../components/CustomersTable';
 import SalesBillsTable from '../components/SalesBillsTable';
 import SalesDashboard from '../components/SalesDashboard';
-import { apiFetch } from '../utils/api';
+import { apiFetch, BASE_URL } from '../utils/api';
 
 const SALES_SECTIONS = [
   { key: 'dashboard', label: 'Sales Dashboard', color: '#f59e0b' },
@@ -80,7 +80,7 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
       formData.append('file', file);
 
       const token = localStorage.getItem('access') || sessionStorage.getItem('access');
-      const response = await fetch('http://localhost:8000/api/sales/customers/bulk-upload/', {
+      const response = await fetch(`${BASE_URL}/sales/customers/bulk-upload/`, {
         method: 'POST',
         body: formData,
         headers: {
@@ -155,7 +155,7 @@ const BulkUploadModal = ({ onClose, onUploadSuccess }) => {
               Download the template for an easy import
             </span>
             <a
-              href="http://localhost:8000/api/sales/customers/bulk-upload/template/"
+              href={`${BASE_URL}/sales/customers/bulk-upload/template/`}
               download="customers_template.csv"
               className="text-xs font-medium text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors whitespace-nowrap ml-3"
             >

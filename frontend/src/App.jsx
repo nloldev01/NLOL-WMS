@@ -38,8 +38,6 @@ import BackupRestorePage from './pages/BackupRestorePage';
 import PalletsPage from './pages/PalletsPage';
 import ScannerPage from './pages/ScannerPage';
 
-export const BASE_URL = 'http://localhost:8000/api';
-
 const PR = ({ module, minAccess, children }) => (
   <ProtectedRoute module={module} minAccess={minAccess}>{children}</ProtectedRoute>
 )
