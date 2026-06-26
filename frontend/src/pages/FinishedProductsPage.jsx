@@ -102,6 +102,10 @@ const FinishedProductsPage = () => {
   const [editingCodeId, setEditingCodeId]     = useState(null)
   const [editingCodeVal, setEditingCodeVal]   = useState('')
 
+  // inline sku-code editing
+  const [editingSkuId, setEditingSkuId]       = useState(null)
+  const [editingSkuVal, setEditingSkuVal]     = useState('')
+
   // BOM modal
   const [bomVariant, setBomVariant]           = useState(null)
   const [bomLines, setBomLines]               = useState([])
@@ -295,7 +299,8 @@ const FinishedProductsPage = () => {
 
   const handleVariantChange = (e) => {
     const { name, value, type, checked } = e.target
-    const val = type === 'checkbox' ? checked : value
+    let val = type === 'checkbox' ? checked : value
+    if (name === 'sku_code') val = val.toUpperCase().replace(/\s+/g, '')
     setVariantForm(prev => {
       const next = { ...prev, [name]: val }
       if (name === 'unit') {
@@ -366,6 +371,17 @@ const FinishedProductsPage = () => {
     if (res?.ok) fetchVariants(productId)
   }
 
+  const saveSkuCode = async (variantId, productId, value) => {
+    setEditingSkuId(null)
+    const sku_code = value.toUpperCase().replace(/\s+/g, '').trim()
+    const res = await apiFetch(`/master-data/finished-product-variants/${variantId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sku_code }),
+    })
+    if (res?.ok) fetchVariants(productId)
+    else { const data = await res.json().catch(() => ({})); alert(parseError(data)) }
+  }
+
   const openBomModal = async (variant) => {
     setBomVariant(variant); setBomLines([]); setBomError(''); setNewBomMaterial(''); setNewBomQty('')
     const [bomRes, consumRes] = await Promise.all([
@@ -411,22 +427,22 @@ const FinishedProductsPage = () => {
       setBulkSubmitting(false)
       return
     }
-    const results = await Promise.all(
-      toCreate.map(vol =>
-        apiFetch('/master-data/finished-product-variants/', {
-          method: 'POST',
-          body: JSON.stringify({
-            finished_product: productId,
-            unit: quickContainer.id,
-            volume: vol,
-            volume_unit: parseInt(quickVolumeUnit),
-            base_quantity: vol,
-            is_available: true,
-            added_sticker: false,
-          }),
-        })
-      )
-    )
+    const results = []
+    for (const vol of toCreate) {
+      const res = await apiFetch('/master-data/finished-product-variants/', {
+        method: 'POST',
+        body: JSON.stringify({
+          finished_product: productId,
+          unit: quickContainer.id,
+          volume: vol,
+          volume_unit: parseInt(quickVolumeUnit),
+          base_quantity: vol,
+          is_available: true,
+          added_sticker: false,
+        }),
+      })
+      results.push(res)
+    }
     const failed = results.filter(r => !r?.ok).length
     await fetchVariants(productId)
     fetchProducts()
@@ -506,6 +522,8 @@ const FinishedProductsPage = () => {
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Base Product</th>
                     <th className="px-4 py-3">Group</th>
+                    <th className="px-4 py-3">Sub Group</th>
+                    <th className="px-4 py-3">Segment</th>
                     <th className="px-4 py-3">Variants</th>
                     <th className="px-4 py-3">Available</th>
                     <th className="px-4 py-3">Actions</th>
@@ -513,7 +531,7 @@ const FinishedProductsPage = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {paginated.length === 0 ? (
-                    <tr><td colSpan={8} className="px-6 py-10 text-center text-gray-400">No finished products found</td></tr>
+                    <tr><td colSpan={10} className="px-6 py-10 text-center text-gray-400">No finished products found</td></tr>
                   ) : paginated.map((item, idx) => (
                     <>
                       <tr key={item.id} className={`hover:bg-gray-50 transition-colors cursor-pointer ${expandedId === item.id ? 'bg-orange-50/40' : ''}`}>
@@ -524,6 +542,8 @@ const FinishedProductsPage = () => {
                         <td className="px-4 py-3 font-medium text-gray-900" onClick={() => toggleExpand(item.id)}>{item.name}</td>
                         <td className="px-4 py-3 text-gray-500" onClick={() => toggleExpand(item.id)}>{item.base_product_name || '—'}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs" onClick={() => toggleExpand(item.id)}>{item.product_group_name || '—'}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs" onClick={() => toggleExpand(item.id)}>{item.product_sub_group_name || '—'}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs" onClick={() => toggleExpand(item.id)}>{item.product_segment_name || '—'}</td>
                         <td className="px-4 py-3" onClick={() => toggleExpand(item.id)}>
                           <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-xs font-semibold">
                             {item.variant_count ?? 0}
@@ -548,7 +568,7 @@ const FinishedProductsPage = () => {
                       {/* ── Variants expanded panel ─────────────────────────── */}
                       {expandedId === item.id && (
                         <tr key={`${item.id}-variants`}>
-                          <td colSpan={8} className="bg-slate-50 px-0 py-0">
+                          <td colSpan={10} className="bg-slate-50 px-0 py-0">
                             <div className="mx-4 my-3 rounded-xl border border-gray-200 bg-white overflow-hidden">
 
                               {/* Header */}
@@ -684,10 +704,33 @@ const FinishedProductsPage = () => {
                                                     + code
                                                   </button>
                                                 )}
-                                                {v.sku_code && (
-                                                  <span className="px-2 py-0.5 rounded-md font-mono text-[10px] text-purple-600 bg-purple-50 border border-purple-100 font-semibold">
+                                                {editingSkuId === v.id ? (
+                                                  <input
+                                                    autoFocus
+                                                    value={editingSkuVal}
+                                                    onChange={e => setEditingSkuVal(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                                                    onBlur={() => saveSkuCode(v.id, item.id, editingSkuVal)}
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter') saveSkuCode(v.id, item.id, editingSkuVal)
+                                                      if (e.key === 'Escape') setEditingSkuId(null)
+                                                    }}
+                                                    className="px-2 py-0.5 rounded-md font-mono text-[10px] text-purple-600 bg-purple-50 border border-purple-300 w-32 outline-none focus:ring-1 focus:ring-purple-400"
+                                                  />
+                                                ) : v.sku_code ? (
+                                                  <button
+                                                    onClick={() => { setEditingSkuId(v.id); setEditingSkuVal(v.sku_code) }}
+                                                    title="Click to edit SKU code"
+                                                    className="px-2 py-0.5 rounded-md font-mono text-[10px] text-purple-600 bg-purple-50 border border-purple-100 font-semibold hover:border-purple-300 hover:bg-purple-100 transition-colors"
+                                                  >
                                                     {v.sku_code}
-                                                  </span>
+                                                  </button>
+                                                ) : (
+                                                  <button
+                                                    onClick={() => { setEditingSkuId(v.id); setEditingSkuVal('') }}
+                                                    className="px-2 py-0.5 rounded-md text-[10px] text-gray-400 bg-gray-50 border border-dashed border-gray-200 hover:border-purple-300 hover:text-purple-500 transition-colors"
+                                                  >
+                                                    + SKU
+                                                  </button>
                                                 )}
                                                 {!v.is_available && (
                                                   <span className="px-1.5 py-0.5 rounded text-[9px] bg-gray-100 text-gray-400">Inactive</span>
@@ -871,7 +914,8 @@ const FinishedProductsPage = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">SKU Code</label>
-                  <input name="sku_code" value={variantForm.sku_code} onChange={handleVariantChange} placeholder="e.g. OJ-500B" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                  <input name="sku_code" value={variantForm.sku_code} onChange={handleVariantChange} placeholder="Auto-generated if left blank" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                  <p className="text-[10px] text-gray-400 mt-0.5">Unique · uppercase · no spaces · auto-generated if blank, editable anytime</p>
                 </div>
               </div>
 

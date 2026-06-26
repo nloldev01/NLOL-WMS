@@ -10,12 +10,14 @@ import RawMaterialStockPage from './pages/RawMaterialStockPage';
 import StockMovementPage from './pages/StockMovementPage';
 import ProductStockPage from './pages/ProductStockPage';
 import ProductMovementPage from './pages/ProductMovementPage';
+import BulkPurchasePage from './pages/BulkPurchasePage';
 import BatchesPage from './pages/BatchesPage';
 import InventoryExplorerPage from './pages/InventoryExplorerPage';
 import LPNFinderPage from './pages/LPNFinderPage';
 import ProductRecipePage from './pages/ProductRecipePage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ProductionDashboardPage from './pages/ProductionDashboardPage';
+import FirstFillTestPage from './pages/FirstFillTestPage';
 import KettlesDashboardPage from './pages/KettlesDashboardPage';
 import VerticalTanksDashboardPage from './pages/VerticalTanksDashboardPage';
 import StorageTanksDashboardPage from './pages/StorageTanksDashboardPage';
@@ -73,6 +75,9 @@ function App() {
         <Route path="/stock/products"    element={<PR module="base_product_stock"><ProductStockPage /></PR>} />
         <Route path="/stock/product-logs" element={<PR module="base_product_stock"><ProductMovementPage /></PR>} />
 
+        {/* Bulk purchase entry — spans raw material / base product / finished product stock */}
+        <Route path="/stock/bulk-purchase" element={<PR><BulkPurchasePage /></PR>} />
+
         {/* Inventory tools */}
         <Route path="/stock/batches"            element={<PR module="inventory_tools"><BatchesPage /></PR>} />
         <Route path="/stock/inventory-explorer" element={<PR module="inventory_tools"><InventoryExplorerPage /></PR>} />
@@ -87,6 +92,7 @@ function App() {
         <Route path="/production/storage-tanks" element={<PR module="production"><StorageTanksDashboardPage /></PR>} />
         <Route path="/production/recipes"       element={<PR module="production_recipes"><ProductRecipePage /></PR>} />
         <Route path="/production/kettle-logs"   element={<PR module="production"><KettleLogsPage /></PR>} />
+        <Route path="/production/first-fill-test" element={<PR module="first_fill_test"><FirstFillTestPage /></PR>} />
 
         {/* Packaging / Finished products */}
         <Route path="/packaging/finished-products"      element={<PR module="packaging"><FinishedProductsPage /></PR>} />

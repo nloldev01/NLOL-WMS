@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Asset, AssetParameter, ProductGroup, ProductSubGroup, ProductSegment, Product, FinishedProduct, FinishedProductVariant, Supplier
+from .models import Unit, FiscalYear, Location, RawMaterialAndConsumable, Asset, AssetParameter, ProductGroup, ProductSubGroup, ProductSegment, Product, Parameter, TestDefinition, TestDefinitionParameter, FinishedProduct, FinishedProductVariant, Supplier
 
 
 # ── Unit ──────────────────────────────────────────────────────────────────────
@@ -165,14 +165,56 @@ class ProductSegmentSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     unit_name = serializers.CharField(source='unit.name', read_only=True)
     unit_symbol = serializers.CharField(source='unit.symbol', read_only=True)
+    default_test_name = serializers.CharField(source='default_test.name', read_only=True, allow_null=True)
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'description', 'is_available',
             'unit', 'unit_name', 'unit_symbol',
+            'default_test', 'default_test_name',
         ]
-        read_only_fields = ['id', 'unit_name', 'unit_symbol']
+        read_only_fields = ['id', 'unit_name', 'unit_symbol', 'default_test_name']
+
+
+# ── Parameter / Test Definition Serializers ──────────────────────────────────
+
+class ParameterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Parameter
+        fields = [
+            'id', 'code', 'name', 'default_method', 'default_unit',
+            'value_type', 'is_active',
+        ]
+        read_only_fields = ['id']
+
+
+class TestDefinitionParameterSerializer(serializers.ModelSerializer):
+    parameter_code = serializers.CharField(source='parameter.code', read_only=True)
+    parameter_name = serializers.CharField(source='parameter.name', read_only=True)
+    value_type      = serializers.CharField(source='parameter.value_type', read_only=True)
+    resolved_method = serializers.CharField(source='resolved_method', read_only=True)
+    resolved_unit   = serializers.CharField(source='resolved_unit', read_only=True)
+    specification   = serializers.CharField(source='specification_display', read_only=True)
+
+    class Meta:
+        model = TestDefinitionParameter
+        fields = [
+            'id', 'test', 'parameter', 'parameter_code', 'parameter_name', 'value_type',
+            'method', 'unit', 'resolved_method', 'resolved_unit',
+            'spec_type', 'min_value', 'max_value', 'specification',
+            'mandatory', 'sort_order',
+        ]
+        read_only_fields = ['id']
+
+
+class TestDefinitionSerializer(serializers.ModelSerializer):
+    parameters = TestDefinitionParameterSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TestDefinition
+        fields = ['id', 'code', 'name', 'category', 'template', 'is_active', 'parameters']
+        read_only_fields = ['id']
 
 
 # ── Finished Product Serializer ───────────────────────────────────────────────

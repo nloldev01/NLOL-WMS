@@ -3,8 +3,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable, ProductGroup, ProductSubGroup, ProductSegment, Product, FinishedProduct, FinishedProductVariant, Supplier
-from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer, ProductGroupSerializer, ProductSubGroupSerializer, ProductSegmentSerializer, ProductSerializer, FinishedProductSerializer, FinishedProductVariantSerializer, SupplierSerializer
+from accounts.permissions import ModulePermission
+from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable, ProductGroup, ProductSubGroup, ProductSegment, Product, Parameter, TestDefinition, TestDefinitionParameter, FinishedProduct, FinishedProductVariant, Supplier
+from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer, ProductGroupSerializer, ProductSubGroupSerializer, ProductSegmentSerializer, ProductSerializer, ParameterSerializer, TestDefinitionSerializer, TestDefinitionParameterSerializer, FinishedProductSerializer, FinishedProductVariantSerializer, SupplierSerializer
 
 
 class UnitViewSet(viewsets.ModelViewSet):
@@ -12,6 +13,7 @@ class UnitViewSet(viewsets.ModelViewSet):
     CRUD for Units.
     Supports:  ?search=kg  ?is_active=true
     """
+    permission_classes = ModulePermission.read_write('master_data')
     queryset         = Unit.objects.all()
     serializer_class = UnitSerializer
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -37,6 +39,7 @@ class FiscalYearViewSet(viewsets.ModelViewSet):
     POST /fiscal-years/{id}/set_active/
         → marks this fiscal year as active and deactivates all others
     """
+    permission_classes = ModulePermission.read_write('master_data')
     queryset         = FiscalYear.objects.all()
     serializer_class = FiscalYearSerializer
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -71,6 +74,7 @@ class AssetViewSet(viewsets.ModelViewSet):
     CRUD for Assets.
     Includes nested asset parameters via the serializer.
     """
+    permission_classes = ModulePermission.read_write('master_data')
     queryset         = Asset.objects.prefetch_related('parameters').all()
     serializer_class = AssetSerializer
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -83,6 +87,7 @@ class LocationViewSet(viewsets.ModelViewSet):
     CRUD for Locations.
     Supports: ?type=zone ?is_active=true ?search=stockyard
     """
+    permission_classes = ModulePermission.read_write('master_data')
     queryset         = Location.objects.select_related('parent').all()
     serializer_class = LocationSerializer
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -105,6 +110,7 @@ class RawMaterialAndConsumableViewSet(viewsets.ModelViewSet):
     CRUD for Raw Materials & Consumables.
     Supports:  ?type=raw_material  ?search=cement
     """
+    permission_classes = ModulePermission.read_write('master_data')
     queryset         = RawMaterialAndConsumable.objects.select_related('unit').all()
     serializer_class = RawMaterialAndConsumableSerializer
     filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -127,6 +133,7 @@ class ProductGroupsViewSet(viewsets.ModelViewSet):
     CRUD for Product Groups.
     Supports: ?search=group_name
     """
+    permission_classes = ModulePermission.read_write('master_data')
     queryset = ProductGroup.objects.all()
     serializer_class = ProductGroupSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -148,6 +155,7 @@ class ProductSubGroupViewSet(viewsets.ModelViewSet):
     CRUD for Product Sub-Groups.
     Supports: ?search=sub_group_name
     """
+    permission_classes = ModulePermission.read_write('master_data')
     queryset = ProductSubGroup.objects.all()
     serializer_class = ProductSubGroupSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -160,6 +168,7 @@ class ProductSegmentViewSet(viewsets.ModelViewSet):
     CRUD for Product Segments.
     Supports: ?search=segment_name
     """
+    permission_classes = ModulePermission.read_write('master_data')
     queryset = ProductSegment.objects.all()
     serializer_class = ProductSegmentSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -168,6 +177,7 @@ class ProductSegmentViewSet(viewsets.ModelViewSet):
 
 
 class ProductViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('master_data')
     queryset = Product.objects.select_related('unit').all()
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -175,7 +185,45 @@ class ProductViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'is_available']
 
 
+class ParameterViewSet(viewsets.ModelViewSet):
+    """
+    Master catalog of lab test characteristics. Admin-governed, rarely edited —
+    seeded directly (see production.seed_test_definitions) rather than through
+    a dedicated UI. Exposed read/write here only so it can still be corrected
+    via the DRF browsable API or Django admin without a code change.
+    """
+    permission_classes = ModulePermission.read_write('first_fill_test')
+    queryset         = Parameter.objects.all()
+    serializer_class = ParameterSerializer
+    filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['value_type', 'is_active']
+    search_fields    = ['code', 'name']
+
+
+class TestDefinitionViewSet(viewsets.ModelViewSet):
+    """
+    Report formats (e.g. "Engine Oil COA"). New formats/limits are data
+    changes here and on TestDefinitionParameter — never new form code.
+    """
+    permission_classes = ModulePermission.read_write('first_fill_test')
+    queryset         = TestDefinition.objects.prefetch_related('parameters', 'parameters__parameter').all()
+    serializer_class = TestDefinitionSerializer
+    filter_backends  = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['category', 'is_active']
+    search_fields    = ['code', 'name', 'category']
+
+
+class TestDefinitionParameterViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('first_fill_test')
+    queryset         = TestDefinitionParameter.objects.select_related('test', 'parameter').all()
+    serializer_class = TestDefinitionParameterSerializer
+    filter_backends  = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['test', 'parameter']
+    ordering_fields  = ['sort_order']
+
+
 class FinishedProductViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('master_data')
     queryset = FinishedProduct.objects.select_related(
         'base_product', 'base_product__unit',
         'product_group', 'product_segment', 'product_sub_group',
@@ -188,6 +236,7 @@ class FinishedProductViewSet(viewsets.ModelViewSet):
 
 
 class FinishedProductVariantViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('master_data')
     queryset = FinishedProductVariant.objects.select_related(
         'finished_product', 'finished_product__base_product', 'finished_product__base_product__unit',
         'unit', 'volume_unit', 'secondary_unit',
@@ -206,5 +255,6 @@ class FinishedProductVariantViewSet(viewsets.ModelViewSet):
 
 
 class SupplierViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('master_data')
     queryset = Supplier.objects.all().order_by('name')
     serializer_class = SupplierSerializer

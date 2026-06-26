@@ -7,9 +7,9 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
 from accounts.permissions import ModulePermission
-from .models import Recipe, ProductionOrder, ProductionOrderMaterial
+from .models import Recipe, ProductionOrder, ProductionOrderMaterial, FirstFillTest, FirstFillTestResult
 from .serializers import (
-    RecipeSerializer, ProductionOrderSerializer,
+    RecipeSerializer, ProductionOrderSerializer, FirstFillTestSerializer,
 )
 
 
@@ -27,6 +27,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
 
 class ProductionOrderViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('production')
     queryset = ProductionOrder.objects.all().prefetch_related(
         'materials', 'materials__material', 'materials__material__unit',
         'recipe', 'recipe__product', 'kettle'
@@ -279,6 +280,7 @@ class ProductionOrderViewSet(viewsets.ModelViewSet):
                     batch_code=batch_code,
                     batch_type='PRD',
                     product=order.recipe.product,
+                    quality_status='pending',
                 )
                 lpn_code = BatchService.generate_lpn_code(produced_batch)
                 produced_lpn = LPN.objects.create(lpn_code=lpn_code, batch=produced_batch)
@@ -302,3 +304,164 @@ class ProductionOrderViewSet(viewsets.ModelViewSet):
         except ValidationError as e:
             msg = e.message if hasattr(e, 'message') else e.messages[0] if hasattr(e, 'messages') and e.messages else str(e)
             return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FirstFillTestViewSet(viewsets.ModelViewSet):
+    """
+    First Fill Test stage — sits between Mixing and Assembly. Driven entirely
+    by data (TestDefinition / TestDefinitionParameter / Parameter): the
+    characteristics shown and their limits come from whichever report format
+    is resolved for the batch's product. Adding a new format or changing a
+    limit is a data change there, never a change to this view.
+
+    POST /first-fill-tests/start/ {batch_id}
+    POST /first-fill-tests/{id}/submit/ {results: [{id, result_text}], remarks?, batch_quantity?}
+        → recomputes every row's verdict + the overall verdict, status -> Reviewed
+    POST /first-fill-tests/{id}/issue/
+        → finalizes the certificate, status -> Issued, updates Batch.quality_status
+    POST /first-fill-tests/{id}/reject-batch/
+    """
+    permission_classes = ModulePermission.read_write('first_fill_test')
+    queryset = FirstFillTest.objects.select_related(
+        'batch', 'batch__product', 'test_definition', 'created_by', 'approved_by'
+    ).prefetch_related('results')
+    serializer_class = FirstFillTestSerializer
+    filter_backends  = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['batch', 'status', 'overall_verdict']
+    ordering_fields  = ['created_at']
+    ordering         = ['-created_at']
+    http_method_names = ['get', 'post', 'head', 'options']  # immutable audit trail — no PUT/PATCH/DELETE
+
+    @action(detail=False, methods=['post'], url_path='start')
+    @transaction.atomic
+    def start(self, request):
+        from inventory_core.models import Batch
+        from master_data.models import TestDefinition
+
+        batch_id = request.data.get('batch_id')
+        if not batch_id:
+            return Response({'error': 'batch_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            batch = Batch.objects.get(id=batch_id, batch_type='PRD')
+        except Batch.DoesNotExist:
+            return Response({'error': 'PRD batch not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if batch.quality_status not in ('pending', 'failed'):
+            return Response(
+                {'error': f"Batch is '{batch.quality_status}' and cannot be (re)tested."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Resolve the report format for this product: the product's own
+        # default_test if set, otherwise the single active TestDefinition.
+        test_definition = batch.product.default_test if batch.product else None
+        if not test_definition:
+            active = list(TestDefinition.objects.filter(is_active=True)[:2])
+            if len(active) == 1:
+                test_definition = active[0]
+        if not test_definition:
+            return Response(
+                {'error': 'No First Fill Test format is configured for this product. '
+                          'Set Product.default_test or seed exactly one active TestDefinition.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Auto-fetch batch quantity from the Mixing order that produced this
+        # batch — the operator shouldn't have to type a number that's already
+        # on record.
+        production_order = batch.production_orders.first()
+        batch_quantity = production_order.produced_quantity if production_order else None
+        quantity_unit = batch.product.unit.symbol if batch.product and batch.product.unit else ''
+
+        test = FirstFillTest.objects.create(
+            batch=batch,
+            test_definition=test_definition,
+            status='draft',
+            date_of_sample_receipt=timezone.now().date(),
+            batch_quantity=batch_quantity,
+            quantity_unit=quantity_unit,
+            created_by=request.user,
+        )
+        for dp in test_definition.parameters.select_related('parameter').all():
+            FirstFillTestResult.objects.create(
+                test=test,
+                parameter=dp.parameter,
+                sr_no=dp.sort_order,
+                mandatory=dp.mandatory,
+                characteristic=dp.parameter.name,
+                unit=dp.resolved_unit(),
+                test_method=dp.resolved_method(),
+                spec_type=dp.spec_type,
+                min_value=dp.min_value,
+                max_value=dp.max_value,
+            )
+        return Response(self.get_serializer(test).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='submit')
+    @transaction.atomic
+    def submit(self, request, pk=None):
+        from .verdict import parse_numeric_result, compute_verdict, compute_overall_verdict
+
+        test = self.get_object()
+        if test.status == 'issued':
+            return Response({'error': 'An issued certificate cannot be edited.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        results_data = request.data.get('results', [])
+        if not isinstance(results_data, list):
+            return Response({'error': 'results must be a list.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        results_by_id = {r.id: r for r in test.results.all()}
+        for r in results_data:
+            row = results_by_id.get(r.get('id'))
+            if not row:
+                continue
+            row.result_text = r.get('result_text', row.result_text)
+            row.result_numeric = parse_numeric_result(row.result_text, row.parameter.value_type)
+            if row.parameter.value_type == 'text':
+                # Qualitative — only a human can say Pass/Fail/NA
+                row.verdict = r.get('verdict') or row.verdict or 'NA'
+            else:
+                row.verdict = compute_verdict(row.spec_type, row.min_value, row.max_value, row.result_numeric, row.parameter.value_type)
+            row.entered_by = request.user
+            row.entered_at = timezone.now()
+            row.save()
+
+        test.overall_verdict = compute_overall_verdict(test.results.all())
+        test.status = 'reviewed'
+        test.remarks = request.data.get('remarks', test.remarks)
+        if request.data.get('batch_quantity') is not None:
+            test.batch_quantity = request.data.get('batch_quantity')
+        test.date_of_analysis = timezone.now().date()
+        test.save()
+
+        return Response(self.get_serializer(test).data)
+
+    @action(detail=True, methods=['post'], url_path='issue')
+    @transaction.atomic
+    def issue(self, request, pk=None):
+        test = self.get_object()
+        if test.status != 'reviewed':
+            return Response({'error': 'Only a reviewed test can be issued.'}, status=status.HTTP_400_BAD_REQUEST)
+        if test.overall_verdict == 'pending':
+            return Response({'error': 'Submit results before issuing.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        test.status = 'issued'
+        test.date_of_issue = timezone.now().date()
+        test.issued_at = timezone.now()
+        test.approved_by = request.user
+        test.save()
+
+        test.batch.quality_status = 'passed' if test.overall_verdict == 'conforms' else 'failed'
+        test.batch.save(update_fields=['quality_status'])
+
+        return Response(self.get_serializer(test).data)
+
+    @action(detail=True, methods=['post'], url_path='reject-batch')
+    @transaction.atomic
+    def reject_batch(self, request, pk=None):
+        test = self.get_object()
+        if test.batch.quality_status != 'failed':
+            return Response({'error': 'Only a batch with a failed (issued) test can be rejected.'}, status=status.HTTP_400_BAD_REQUEST)
+        test.batch.quality_status = 'rejected'
+        test.batch.save(update_fields=['quality_status'])
+        return Response(self.get_serializer(test).data)

@@ -85,8 +85,9 @@ const BatchQRModal = ({ item, onClose }) => {
 const PAGE_SIZE = 10;
 
 const BATCH_TYPE_CHOICES = [
-  { value: 'RAW', label: 'Raw Material' },
-  { value: 'PRD', label: 'Product' },
+  { value: 'RAW', label: 'Raw Materials' },
+  { value: 'PRD', label: 'Production Goods' },
+  { value: 'FIN', label: 'Finished Goods' },
 ]
 
 const EMPTY_FORM = {
@@ -101,6 +102,7 @@ const EMPTY_FORM = {
 const TYPE_COLORS = {
   RAW: 'bg-blue-50 text-blue-600 border border-blue-200',
   PRD: 'bg-purple-50 text-purple-600 border border-purple-200',
+  FIN: 'bg-green-50 text-green-600 border border-green-200',
 }
 
 const TypeBadge = ({ type }) => {

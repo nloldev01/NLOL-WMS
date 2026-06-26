@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from .encryption import EncryptedDecimalField, EncryptedTextField
 
@@ -101,6 +102,126 @@ class ProductionOrder(models.Model):
     def __str__(self):
         name = self.recipe.product.name if self.recipe else f"Custom Mix {self.mixture_id}"
         return f"{self.order_number} - {name} ({self.get_status_display()})"
+
+
+class FirstFillTest(models.Model):
+    """
+    A COA ("test_batches" in the design doc) — one First Fill Test attempt for
+    a PRD batch, sitting between Mixing and Assembly. Multiple attempts per
+    batch are allowed (retests). Which characteristics get tested and their
+    limits come entirely from `test_definition` (a data row, never code) —
+    this model only holds the header + workflow state.
+
+    Batch.quality_status (the Assembly gate) is only updated once the
+    certificate is Issued, not on every save.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('reviewed', 'Reviewed'),
+        ('issued', 'Issued'),
+    ]
+    VERDICT_CHOICES = [
+        ('pending', 'Pending'),
+        ('conforms', 'Conforms'),
+        ('non_conforming', 'Non-conforming'),
+    ]
+
+    batch = models.ForeignKey(
+        'inventory_core.Batch',
+        on_delete=models.CASCADE,
+        related_name='first_fill_tests',
+    )
+    test_definition = models.ForeignKey(
+        'master_data.TestDefinition',
+        null=True, blank=True,
+        on_delete=models.PROTECT,
+        related_name='batches',
+        help_text="Report format used for this batch (e.g. Engine Oil COA). Always set by start().",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    overall_verdict = models.CharField(max_length=20, choices=VERDICT_CHOICES, default='pending')
+
+    batch_quantity = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
+    quantity_unit = models.CharField(max_length=20, blank=True, default='')
+    date_of_sample_receipt = models.DateField(null=True, blank=True)
+    date_of_analysis = models.DateField(null=True, blank=True)
+    date_of_issue = models.DateField(null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='first_fill_tests_created',
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='first_fill_tests_approved',
+    )
+    remarks = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    issued_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'production_first_fill_tests'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"First Fill Test for {self.batch.batch_code} ({self.get_status_display()})"
+
+
+class FirstFillTestResult(models.Model):
+    """
+    One measured characteristic ("test_results" line item) within a
+    FirstFillTest. Spec fields are snapshotted from TestDefinitionParameter
+    at the moment the test was started, so a re-opened certificate always
+    shows the limit that was active when it was tested — even if the master
+    TestDefinitionParameter row is edited later.
+    """
+    VERDICT_CHOICES = [
+        ('Pass', 'Pass'),
+        ('Fail', 'Fail'),
+        ('NA', 'N/A'),
+    ]
+
+    test = models.ForeignKey(FirstFillTest, related_name='results', on_delete=models.CASCADE)
+    parameter = models.ForeignKey('master_data.Parameter', null=True, blank=True, on_delete=models.PROTECT, related_name='+')
+    sr_no = models.PositiveIntegerField()
+    mandatory = models.BooleanField(default=True)
+
+    # Snapshot of TestDefinitionParameter at test-start time
+    characteristic = models.CharField(max_length=200)
+    unit = models.CharField(max_length=50, blank=True)
+    test_method = models.CharField(max_length=100, blank=True)
+    spec_type = models.CharField(max_length=10, choices=[('Report', 'Report'), ('Min', 'Min'), ('Max', 'Max'), ('Range', 'Range')], default='Report')
+    min_value = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    max_value = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+
+    result_text = models.CharField(max_length=200, blank=True, default='')
+    result_numeric = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
+    verdict = models.CharField(max_length=10, choices=VERDICT_CHOICES, default='NA')
+
+    entered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+',
+    )
+    entered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'production_first_fill_test_results'
+        ordering = ['sr_no']
+
+    def __str__(self):
+        return f"{self.characteristic} = {self.result_text}"
+
+    def specification_display(self):
+        if self.spec_type == 'Report':
+            return 'Report'
+        if self.spec_type == 'Min':
+            return f"{self.min_value} Min"
+        if self.spec_type == 'Max':
+            return f"{self.max_value} Max"
+        if self.spec_type == 'Range':
+            return f"{self.min_value} - {self.max_value}"
+        return ''
 
 
 class ProductionOrderMaterial(models.Model):

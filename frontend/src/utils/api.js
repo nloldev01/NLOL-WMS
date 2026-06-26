@@ -36,6 +36,27 @@ export const getApiError = async (res) => {
   }
 }
 
+const REDIRECT_ERROR_KEY = 'api_redirect_error'
+
+/**
+ * Stash a human-readable error message in sessionStorage right before a redirect,
+ * so the destination page can show it. Read-once with a short TTL so stale
+ * entries never resurface on a later, unrelated navigation.
+ */
+const stashRedirectError = (message) => {
+  try { sessionStorage.setItem(REDIRECT_ERROR_KEY, JSON.stringify({ message, ts: Date.now() })) } catch {}
+}
+
+export const consumeRedirectError = () => {
+  try {
+    const raw = sessionStorage.getItem(REDIRECT_ERROR_KEY)
+    sessionStorage.removeItem(REDIRECT_ERROR_KEY)
+    if (!raw) return null
+    const { message, ts } = JSON.parse(raw)
+    return Date.now() - ts < 10000 ? message : null
+  } catch { return null }
+}
+
 /**
  * A wrapper around fetch that adds authorization header and handles common errors.
  * @param {string} endpoint - The API endpoint (e.g. '/users/')
@@ -88,7 +109,9 @@ export const apiFetch = async (endpoint, options = {}) => {
     });
 
     if (response.status === 401) {
-      console.warn('Unauthorized request. Redirecting to login...');
+      const message = await getApiError(response.clone());
+      console.warn('Unauthorized request. Redirecting to login...', message);
+      stashRedirectError(message);
       ['access','refresh','user','isAuthenticated','user_permissions'].forEach(k => {
         localStorage.removeItem(k);
         sessionStorage.removeItem(k);
@@ -98,7 +121,9 @@ export const apiFetch = async (endpoint, options = {}) => {
     }
 
     if (response.status >= 500) {
-      console.error('Server error detected. Redirecting to 500 error page...');
+      const message = await getApiError(response.clone());
+      console.error('Server error detected. Redirecting to 500 error page...', message);
+      stashRedirectError(message);
       window.location.href = '/500';
       return response;
     }
@@ -106,6 +131,7 @@ export const apiFetch = async (endpoint, options = {}) => {
     return response;
   } catch (error) {
     console.error('Network error or server is down:', error);
+    stashRedirectError('Could not reach the server. Please check your connection and try again.');
     window.location.href = '/500';
     throw error;
   }

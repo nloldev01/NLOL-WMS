@@ -142,7 +142,7 @@ const AssemblyOrdersPage = () => {
   const fetchProductionQueue = async () => {
     setQueueLoading(true)
     try {
-      const res = await apiFetch('/products-stock/stock/?batch__batch_type=PRD&location__type=assembly')
+      const res = await apiFetch('/products-stock/stock/?batch__batch_type=PRD&batch__quality_status=passed&location__type=assembly')
       if (res?.ok) {
         const d = await res.json()
         const items = Array.isArray(d) ? d : (d.results ?? [])
@@ -155,7 +155,7 @@ const AssemblyOrdersPage = () => {
   const fetchSourceBatchesForVariant = async (variantId) => {
     const parentProduct = finishedProducts.find(p => String(p.id) === String(form.finished_product))
     if (!parentProduct?.base_product) return
-    const res = await apiFetch(`/inventory-core/batches/?batch_type=PRD&product=${parentProduct.base_product}`)
+    const res = await apiFetch(`/inventory-core/batches/?batch_type=PRD&quality_status=passed&product=${parentProduct.base_product}`)
     if (res?.ok) {
       const d = await res.json()
       const batches = Array.isArray(d) ? d : (d.results ?? [])

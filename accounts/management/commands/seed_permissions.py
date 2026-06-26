@@ -18,6 +18,7 @@ MODULES = [
     {'key': 'dispatch',              'label': 'Dispatch & Dealer Orders', 'sort_order': 14},
     {'key': 'inventory_core',        'label': 'Inventory Core (Pallets)', 'sort_order': 15},
     {'key': 'inventory_adjust',      'label': 'Stock Adjustments',        'sort_order': 16},
+    {'key': 'first_fill_test',       'label': 'First Fill Test (QC)',     'sort_order': 17},
 ]
 
 # Default access matrix: role_key → {module_key: access_level}
@@ -38,6 +39,7 @@ DEFAULTS = {
         'production_recipes':     'none',
         'inventory_core':         'full',
         'inventory_adjust':       'full',
+        'first_fill_test':        'full',
     },
     'production': {
         'dashboard':              'view',
@@ -52,6 +54,23 @@ DEFAULTS = {
         'sales':                  'none',
         'inventory_tools':        'view',
         'production_recipes':     'full',
+        'first_fill_test':        'view',
+    },
+    'quality_control': {
+        'dashboard':              'view',
+        'master_data':            'view',
+        'users':                  'none',
+        'raw_material_stock':     'none',
+        'base_product_stock':     'none',
+        'production':             'none',
+        'assembly':               'none',
+        'packaging':              'none',
+        'finished_product_stock': 'none',
+        'sales':                  'none',
+        'inventory_tools':        'view',
+        'production_recipes':     'none',
+        'inventory_core':         'view',
+        'first_fill_test':        'full',
     },
     'assembly': {
         'dashboard':              'view',
@@ -127,6 +146,7 @@ DEFAULTS = {
         'dispatch':               'view',
         'inventory_core':         'view',
         'inventory_adjust':       'full',
+        'first_fill_test':        'view',
     },
     'dealer': {
         'dashboard':              'view',

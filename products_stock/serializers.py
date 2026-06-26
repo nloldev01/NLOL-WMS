@@ -8,16 +8,17 @@ from inventory_core.models import Batch
 # ── Bulk Product Stock ────────────────────────────────────────────────────────
 
 class ProductStockSerializer(serializers.ModelSerializer):
-    product_name  = serializers.ReadOnlyField(source='product.name')
-    location_name = serializers.ReadOnlyField(source='location.get_full_path')
-    batch_code    = serializers.ReadOnlyField(source='batch.batch_code')
-    lpn_code      = serializers.ReadOnlyField(source='lpn.lpn_code')
-    unit          = serializers.ReadOnlyField(source='product.unit.symbol')
+    product_name   = serializers.ReadOnlyField(source='product.name')
+    location_name  = serializers.ReadOnlyField(source='location.get_full_path')
+    batch_code     = serializers.ReadOnlyField(source='batch.batch_code')
+    quality_status = serializers.ReadOnlyField(source='batch.quality_status')
+    lpn_code       = serializers.ReadOnlyField(source='lpn.lpn_code')
+    unit           = serializers.ReadOnlyField(source='product.unit.symbol')
 
     class Meta:
         model  = ProductStock
         fields = [
-            'id', 'product', 'product_name', 'batch', 'batch_code', 'lpn', 'lpn_code',
+            'id', 'product', 'product_name', 'batch', 'batch_code', 'quality_status', 'lpn', 'lpn_code',
             'location', 'location_name', 'quantity', 'unit', 'updated_at',
         ]
 

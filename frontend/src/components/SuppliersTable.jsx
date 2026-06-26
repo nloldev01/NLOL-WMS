@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../utils/api'
+import Pagination from './Pagination'
 
 const PAGE_SIZE = 10
 const EMPTY_FORM = {
@@ -47,7 +48,7 @@ export default function SuppliersTable() {
   // ── Filter + Pagination ─────────────────────────────
   const filtered = suppliers.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase())
-  )
+  ).sort((a, b) => a.name.localeCompare(b.name))
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -204,19 +205,7 @@ export default function SuppliersTable() {
             {Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
           </span>
 
-          <div className="flex gap-2">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))}>‹</button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className={page === p ? 'font-bold text-purple-600' : ''}
-              >
-                {p}
-              </button>
-            ))}
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))}>›</button>
-          </div>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       </div>
 

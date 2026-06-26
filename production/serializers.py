@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Recipe, RecipeItem, ProductionOrder, ProductionOrderMaterial
+from .models import Recipe, RecipeItem, ProductionOrder, ProductionOrderMaterial, FirstFillTest, FirstFillTestResult
     
 class RecipeItemSerializer(serializers.ModelSerializer):
     # Read: use the encrypted-then-decrypted cached name (never expose material FK id)
@@ -66,6 +66,53 @@ class RecipeSerializer(serializers.ModelSerializer):
                 RecipeItem.objects.create(recipe=instance, **item_data)
         
         return instance
+
+
+class FirstFillTestResultSerializer(serializers.ModelSerializer):
+    parameter_code = serializers.CharField(source='parameter.code', read_only=True)
+    specification  = serializers.CharField(source='specification_display', read_only=True)
+    value_type     = serializers.CharField(source='parameter.value_type', read_only=True)
+
+    class Meta:
+        model = FirstFillTestResult
+        fields = [
+            'id', 'parameter', 'parameter_code', 'value_type', 'sr_no', 'mandatory',
+            'characteristic', 'unit', 'test_method',
+            'spec_type', 'min_value', 'max_value', 'specification',
+            'result_text', 'result_numeric', 'verdict',
+        ]
+        read_only_fields = ['id']
+
+
+class FirstFillTestSerializer(serializers.ModelSerializer):
+    results              = FirstFillTestResultSerializer(many=True, read_only=True)
+    batch_code           = serializers.CharField(source='batch.batch_code', read_only=True)
+    product_name         = serializers.CharField(source='batch.product.name', read_only=True)
+    product_unit_symbol  = serializers.CharField(source='batch.product.unit.symbol', read_only=True, allow_null=True)
+    product_category     = serializers.CharField(source='test_definition.category', read_only=True, allow_null=True)
+    test_definition_name  = serializers.CharField(source='test_definition.name', read_only=True)
+    test_definition_template = serializers.CharField(source='test_definition.template', read_only=True)
+    status_display        = serializers.CharField(source='get_status_display', read_only=True)
+    overall_verdict_display = serializers.CharField(source='get_overall_verdict_display', read_only=True)
+    created_by_name       = serializers.CharField(source='created_by.fullname', read_only=True, allow_null=True)
+    approved_by_name      = serializers.CharField(source='approved_by.fullname', read_only=True, allow_null=True)
+
+    class Meta:
+        model = FirstFillTest
+        fields = [
+            'id', 'batch', 'batch_code', 'product_name', 'product_unit_symbol', 'product_category',
+            'test_definition', 'test_definition_name', 'test_definition_template',
+            'status', 'status_display', 'overall_verdict', 'overall_verdict_display',
+            'batch_quantity', 'quantity_unit',
+            'date_of_sample_receipt', 'date_of_analysis', 'date_of_issue',
+            'created_by', 'created_by_name', 'approved_by', 'approved_by_name',
+            'remarks', 'results',
+            'created_at', 'issued_at',
+        ]
+        read_only_fields = [
+            'id', 'status', 'overall_verdict', 'created_by', 'approved_by',
+            'created_at', 'issued_at',
+        ]
 
 
 class ProductionOrderMaterialSerializer(serializers.ModelSerializer):

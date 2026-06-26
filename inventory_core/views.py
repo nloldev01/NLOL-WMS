@@ -21,7 +21,7 @@ class BatchViewSet(viewsets.ModelViewSet):
     serializer_class = BatchSerializer
     permission_classes = ModulePermission.read_write('inventory_core')
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['raw_material', 'product', 'batch_type', 'finished_product_variant', 'finished_product_variant__finished_product']
+    filterset_fields = ['raw_material', 'product', 'batch_type', 'quality_status', 'finished_product_variant', 'finished_product_variant__finished_product']
     search_fields = ['batch_code']
 
     def perform_create(self, serializer):

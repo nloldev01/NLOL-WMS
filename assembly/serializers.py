@@ -91,6 +91,14 @@ class AssemblyOrderSerializer(serializers.ModelSerializer):
         lines = obj.material_lines.select_related('material', 'material__unit', 'location').all()
         return AssemblyMaterialLineSerializer(lines, many=True).data
 
+    def validate_source_batch(self, value):
+        if value is not None and value.quality_status != 'passed':
+            raise serializers.ValidationError(
+                f"This batch has not passed its First Fill Test (status: {value.get_quality_status_display()}) "
+                f"and cannot be used in Assembly."
+            )
+        return value
+
     def create(self, validated_data):
         validated_data['assembly_number'] = AssemblyOrder.generate_order_number()
         return super().create(validated_data)

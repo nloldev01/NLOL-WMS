@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { apiFetch } from '../utils/api'
+import Pagination from './Pagination'
 
 const PAGE_SIZE = 10
 const EMPTY_FORM = { name: '', start_date: '', end_date: '' }
@@ -38,7 +39,7 @@ export default function FiscalYearsTable() {
   // ── Filter + Paginate (client-side on fetched data) ───────────────────────
   const filtered = fiscalYears.filter(fy =>
     fy.name.toLowerCase().includes(search.toLowerCase())
-  )
+  ).sort((a, b) => a.name.localeCompare(b.name))
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
@@ -223,26 +224,7 @@ export default function FiscalYearsTable() {
           <p className="text-xs text-gray-400">
             Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
           </p>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-            >‹</button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className={`w-7 h-7 rounded text-xs font-medium ${page === p ? 'bg-purple-500 text-white' : 'text-gray-500 hover:bg-gray-100'
-                  }`}
-              >{p}</button>
-            ))}
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-            >›</button>
-          </div>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       </div>
 

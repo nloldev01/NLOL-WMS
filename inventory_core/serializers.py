@@ -18,7 +18,7 @@ class BatchSerializer(serializers.ModelSerializer):
             'product', 'product_name',
             'finished_product_variant', 'finished_product_variant_name', 'finished_product_variant_label',
             'supplier', 'expiry_date', 'created_at',
-            'current_stock', 'lpns',
+            'current_stock', 'lpns', 'quality_status',
         ]
         read_only_fields = ['batch_code', 'created_at']
 

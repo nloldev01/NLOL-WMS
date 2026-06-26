@@ -1,6 +1,6 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
@@ -21,6 +21,7 @@ auth_logger = logging.getLogger('erp.auth')
 signer = TimestampSigner()
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def login_view(request):
     login_input = request.data.get('username')
     password = request.data.get('password')
@@ -78,6 +79,7 @@ def login_view(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def setup_2fa_view(request):
     temp_token = request.data.get('temp_token')
     if not temp_token:
@@ -108,6 +110,7 @@ def setup_2fa_view(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def verify_2fa_setup_view(request):
     temp_token = request.data.get('temp_token')
     code = request.data.get('code', '').strip()
@@ -132,6 +135,7 @@ def verify_2fa_setup_view(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def verify_2fa_login_view(request):
     temp_token = request.data.get('temp_token')
     code = request.data.get('code', '').strip()

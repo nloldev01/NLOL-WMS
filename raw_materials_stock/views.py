@@ -125,22 +125,17 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
             'performed_by',
         ).all()
 
-    @action(detail=False, methods=['post'], url_path='record')
-    @transaction.atomic
-    def record(self, request):
+    def _create_log_from_validated(self, validated_data, user):
         """
-        POST /stock-movements/record/
-        Record any stock movement: purchase, usage, wastage, transfer, adjustment, return.
+        Shared logic: batch/supplier resolution + RawMaterialStockLog.create_movement().
+        Used by both record() and bulk_record().
         """
-        serializer = StockMovementSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        batch = serializer.validated_data.get('batch')
-        lpn = serializer.validated_data.get('lpn')
-        supplier = serializer.validated_data.get('supplier')
-        material = serializer.validated_data['material']
-        auto_generate = serializer.validated_data.get('auto_generate_batch', False)
-        auto_generate_lpn = serializer.validated_data.get('auto_generate_lpn', False)
+        batch = validated_data.get('batch')
+        lpn = validated_data.get('lpn')
+        supplier = validated_data.get('supplier')
+        material = validated_data['material']
+        auto_generate = validated_data.get('auto_generate_batch', False)
+        auto_generate_lpn = validated_data.get('auto_generate_lpn', False)
 
         # Logic: If batch is selected, take its supplier
         if batch and batch.supplier:
@@ -155,27 +150,39 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
                 raw_material=material,
                 supplier=supplier # Link provided supplier to new batch
             )
-            
+
         # For positive adjustments (auto-generated batch), treat as inbound
-        movement_type = serializer.validated_data['movement_type']
+        movement_type = validated_data['movement_type']
         if movement_type == 'adjustment' and auto_generate:
             movement_type = 'adjustment_in'
 
+        return RawMaterialStockLog.create_movement(
+            material=material,
+            location=validated_data['location'],
+            movement_type=movement_type,
+            quantity=validated_data['quantity'],
+            batch=batch,
+            lpn=lpn,
+            supplier=supplier,
+            counterpart_location=validated_data.get('counterpart_location'),
+            reference=validated_data.get('reference', ''),
+            notes=validated_data.get('notes', ''),
+            performed_by=user,
+            auto_generate_lpn=auto_generate_lpn,
+        )
+
+    @action(detail=False, methods=['post'], url_path='record')
+    @transaction.atomic
+    def record(self, request):
+        """
+        POST /stock-movements/record/
+        Record any stock movement: purchase, usage, wastage, transfer, adjustment, return.
+        """
+        serializer = StockMovementSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
         try:
-            log = RawMaterialStockLog.create_movement(
-                material=serializer.validated_data['material'],
-                location=serializer.validated_data['location'],
-                movement_type=movement_type,
-                quantity=serializer.validated_data['quantity'],
-                batch=batch,
-                lpn=lpn,
-                supplier=supplier,
-                counterpart_location=serializer.validated_data.get('counterpart_location'),
-                reference=serializer.validated_data.get('reference', ''),
-                notes=serializer.validated_data.get('notes', ''),
-                performed_by=request.user,
-                auto_generate_lpn=auto_generate_lpn,
-            )
+            log = self._create_log_from_validated(serializer.validated_data, request.user)
         except ValidationError as e:
             msg = e.message if hasattr(e, 'message') else str(e)
             return Response(
@@ -185,5 +192,33 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response(
             RawMaterialStockLogSerializer(log).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['post'], url_path='bulk-record')
+    @transaction.atomic
+    def bulk_record(self, request):
+        """
+        POST /stock-movements/bulk-record/
+        Record multiple stock movements (e.g. all line items on one purchase bill)
+        in a single all-or-nothing transaction.
+        """
+        serializer = StockMovementSerializer(data=request.data, many=True)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            logs = [
+                self._create_log_from_validated(item, request.user)
+                for item in serializer.validated_data
+            ]
+        except ValidationError as e:
+            msg = e.message if hasattr(e, 'message') else str(e)
+            return Response(
+                {'error': msg},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            RawMaterialStockLogSerializer(logs, many=True).data,
             status=status.HTTP_201_CREATED,
         )

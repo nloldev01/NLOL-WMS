@@ -1,8 +1,14 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { consumeRedirectError } from '../utils/api';
 
 const ErrorPage = ({ type = '404' }) => {
   const navigate = useNavigate();
+  const [detail, setDetail] = useState(null);
+
+  useEffect(() => {
+    if (type === '500') setDetail(consumeRedirectError());
+  }, [type]);
 
   const errorDetails = {
     '403': {
@@ -56,6 +62,11 @@ const ErrorPage = ({ type = '404' }) => {
         <p className="text-gray-500 mb-8 leading-relaxed">
           {message}
         </p>
+        {detail && (
+          <div className="mb-6 p-3 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg text-left break-words">
+            <span className="font-semibold">Details:</span> {detail}
+          </div>
+        )}
         <button
           onClick={handleAction}
           className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-8 py-3 text-sm font-semibold text-white shadow-lg hover:bg-orange-700 hover:shadow-orange-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-all active:scale-95"

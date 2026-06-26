@@ -23,9 +23,15 @@ const TYPE_COLOR = {
   RAW: 'bg-amber-100 text-amber-700',
 }
 
+const TYPE_LABEL = {
+  FIN: 'Finished Goods',
+  PRD: 'Production Goods',
+  RAW: 'Raw Materials',
+}
+
 function Badge({ type }) {
   const c = TYPE_COLOR[type] || 'bg-gray-100 text-gray-600'
-  return <span className={`text-xs font-bold px-2 py-1 rounded ${c}`}>{type}</span>
+  return <span className={`text-xs font-bold px-2 py-1 rounded ${c}`}>{TYPE_LABEL[type] || type}</span>
 }
 
 function CameraButton({ onClick, active }) {

@@ -26,9 +26,9 @@ class Batch(models.Model):
     """
 
     BATCH_TYPE_CHOICES = [
-        ('RAW', 'Raw Material'),
-        ('PRD', 'Product'),
-        ('FIN', 'Finished Product'),
+        ('RAW', 'Raw Materials'),
+        ('PRD', 'Production Goods'),
+        ('FIN', 'Finished Goods'),
     ]
 
     batch_code = models.CharField(max_length=50, unique=True)
@@ -78,6 +78,20 @@ class Batch(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     expiry_date = models.DateField(null=True, blank=True)
+
+    QUALITY_STATUS_CHOICES = [
+        ('not_required', 'Not Required'),
+        ('pending', 'Pending Test'),
+        ('passed', 'Passed'),
+        ('failed', 'Failed'),
+        ('rejected', 'Rejected'),
+    ]
+    quality_status = models.CharField(
+        max_length=20,
+        choices=QUALITY_STATUS_CHOICES,
+        default='not_required',
+        help_text="First Fill Test gate for PRD batches before they can be picked into Assembly.",
+    )
 
     class Meta:
         db_table = 'inventory_batches'

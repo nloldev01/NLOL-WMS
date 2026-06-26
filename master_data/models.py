@@ -1,6 +1,16 @@
 from django.db import models
 import uuid
-from django.db import connection
+from django.db import connection, transaction
+from django.db.utils import IntegrityError
+from django.core.exceptions import ValidationError
+
+
+def validate_variant_code(value):
+    """Variant codes (sku_code) must contain no spaces and be all uppercase."""
+    if any(ch.isspace() for ch in value):
+        raise ValidationError('Variant code must not contain spaces.')
+    if value != value.upper():
+        raise ValidationError('Variant code must be in all caps (uppercase).')
 
 
 class Unit(models.Model):
@@ -281,6 +291,13 @@ class Product(models.Model):
         on_delete=models.PROTECT,
         related_name='products'
     )
+    default_test = models.ForeignKey(
+        'TestDefinition',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='products',
+        help_text="First Fill Test report format used for this product's PRD batches.",
+    )
 
     class Meta:
         db_table = 'products'
@@ -288,6 +305,98 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Parameter(models.Model):
+    """
+    Master catalog of lab test characteristics (e.g. "KV @100°C", "Flash Point").
+    Admin-governed, rarely edited. A TestDefinition references rows here instead
+    of each report format re-typing its own characteristic list.
+    """
+    VALUE_TYPE_CHOICES = [
+        ('numeric', 'Numeric'),
+        ('text', 'Text'),
+        ('bounded', 'Bounded (e.g. "<2.5", "1b")'),
+    ]
+    code = models.CharField(max_length=20, unique=True)  # e.g. "P006"
+    name = models.CharField(max_length=200)
+    default_method = models.CharField(max_length=100, blank=True)
+    default_unit = models.CharField(max_length=50, blank=True)
+    value_type = models.CharField(max_length=20, choices=VALUE_TYPE_CHOICES, default='numeric')
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'master_test_parameters'
+        ordering = ['code']
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+
+class TestDefinition(models.Model):
+    """
+    One report format (e.g. "Engine Oil COA", "Grease COA"). New formats are
+    added as rows here + TestDefinitionParameter rows — never as new code/forms.
+    """
+    code = models.CharField(max_length=20, unique=True)  # e.g. "T01"
+    name = models.CharField(max_length=200)
+    category = models.CharField(max_length=100, blank=True)  # e.g. "Lubricants"
+    template = models.CharField(max_length=50, default='layout_A')
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'master_test_definitions'
+        ordering = ['code']
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+
+class TestDefinitionParameter(models.Model):
+    """
+    Which parameters a TestDefinition requires, and the limits for each —
+    the only place a new format's spec sheet is defined.
+    """
+    SPEC_TYPE_CHOICES = [
+        ('Report', 'Report'),
+        ('Min', 'Min'),
+        ('Max', 'Max'),
+        ('Range', 'Range'),
+    ]
+    test = models.ForeignKey(TestDefinition, on_delete=models.CASCADE, related_name='parameters')
+    parameter = models.ForeignKey(Parameter, on_delete=models.PROTECT, related_name='test_definitions')
+    method = models.CharField(max_length=100, blank=True)  # overrides parameter.default_method if set
+    unit = models.CharField(max_length=50, blank=True)      # overrides parameter.default_unit if set
+    spec_type = models.CharField(max_length=10, choices=SPEC_TYPE_CHOICES, default='Report')
+    min_value = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    max_value = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    mandatory = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'master_test_definition_parameters'
+        ordering = ['test', 'sort_order']
+        unique_together = ('test', 'parameter')
+
+    def __str__(self):
+        return f"{self.test.code} - {self.parameter.code}"
+
+    def resolved_method(self):
+        return self.method or self.parameter.default_method
+
+    def resolved_unit(self):
+        return self.unit or self.parameter.default_unit
+
+    def specification_display(self):
+        if self.spec_type == 'Report':
+            return 'Report'
+        if self.spec_type == 'Min':
+            return f"{self.min_value} Min"
+        if self.spec_type == 'Max':
+            return f"{self.max_value} Max"
+        if self.spec_type == 'Range':
+            return f"{self.min_value} - {self.max_value}"
+        return ''
 
 
 class FinishedProduct(models.Model):
@@ -368,7 +477,8 @@ class FinishedProductVariant(models.Model):
     base_quantity  = models.DecimalField(max_digits=14, decimal_places=4)
     name           = models.CharField(max_length=255, blank=True, null=True)
     product_code   = models.CharField(max_length=50, blank=True, null=True)
-    sku_code       = models.CharField(max_length=50, unique=True, blank=True, null=True)
+    sku_code       = models.CharField(max_length=50, unique=True, blank=True, null=True,
+                                      validators=[validate_variant_code])
     is_available   = models.BooleanField(default=True)
     added_sticker  = models.BooleanField(default=False)
     sticker_name   = models.CharField(max_length=255, blank=True, null=True)
@@ -379,6 +489,32 @@ class FinishedProductVariant(models.Model):
         db_table = 'finished_product_variants'
         ordering = ['finished_product__name', 'volume']
         unique_together = ['finished_product', 'unit', 'volume', 'volume_unit']
+
+    def save(self, *args, **kwargs):
+        if self.sku_code or self.pk is not None:
+            super().save(*args, **kwargs)
+            return
+        # Auto-generate sku_code, retrying on a uniqueness collision so concurrent
+        # creates for the same finished_product (e.g. bulk size add) can't silently fail.
+        for attempt in range(10):
+            self.sku_code = self._generate_sku_code()
+            try:
+                with transaction.atomic():
+                    super().save(*args, **kwargs)
+                return
+            except IntegrityError:
+                self.pk = None
+                if attempt == 9:
+                    raise
+
+    def _generate_sku_code(self):
+        existing = FinishedProductVariant.objects.filter(finished_product_id=self.finished_product_id).count()
+        seq = existing + 1
+        candidate = f"FP{self.finished_product_id}-{seq:02d}"
+        while FinishedProductVariant.objects.filter(sku_code=candidate).exists():
+            seq += 1
+            candidate = f"FP{self.finished_product_id}-{seq:02d}"
+        return candidate
 
     def __str__(self):
         return f"{self.finished_product.name} {self.volume}{self.volume_unit.symbol} ({self.unit.name})"

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
+import { useNavigate } from 'react-router-dom'
 import { apiFetch, parseError } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
 
@@ -217,6 +218,7 @@ const QuickAddLocationModal = ({ isOpen, onClose, onAdd, locations }) => {
 }
 
 const StockMovementPage = () => {
+  const navigate = useNavigate()
   const [logs, setLogs]           = useState([])
   const [materials, setMaterials] = useState([])
   const [locations, setLocations] = useState([])
@@ -526,6 +528,16 @@ const StockMovementPage = () => {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">Raw Materials Movement Log</h2>
               <div className="flex items-center gap-3">
+
+                <button
+                  onClick={() => navigate('/stock/bulk-purchase')}
+                  className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 text-orange-600 px-3 py-1.5 text-xs font-medium hover:bg-orange-100"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m-9-8h12a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2z" />
+                  </svg>
+                  Bulk Purchase
+                </button>
 
                 <button
                   onClick={openAdd}

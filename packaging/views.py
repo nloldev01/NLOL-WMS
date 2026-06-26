@@ -4,11 +4,13 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.core.exceptions import ValidationError
 
+from accounts.permissions import ModulePermission
 from .models import PackagingOrder
 from .serializers import PackagingOrderSerializer
 
 
 class PackagingOrderViewSet(viewsets.ModelViewSet):
+    permission_classes = ModulePermission.read_write('packaging')
     queryset = PackagingOrder.objects.select_related(
         'assembly_order',
         'finished_product_variant',

@@ -61,6 +61,7 @@ const Sidebar = () => {
       id: 'stocks',
       label: 'Stocks',
       children: [
+        ...(hasAccess('raw_material_stock') || hasAccess('base_product_stock') || hasAccess('finished_product_stock') ? [{ id: 'bulk-purchase', label: 'Bulk Purchase Entry', path: '/stock/bulk-purchase' }] : []),
         ...(hasAccess('base_product_stock')  ? [{ id: 'product-stock', label: 'Base Product Stock', path: '/stock/products' }] : []),
         ...(hasAccess('raw_material_stock')  ? [{ id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stock/raw-materials' }] : []),
         ...(hasAccess('base_product_stock')  ? [{ id: 'product-stock-logs', label: 'Base Product Logs', path: '/stock/product-logs' }] : []),
@@ -80,16 +81,19 @@ const Sidebar = () => {
         { id: 'user-roles', label: 'Roles & Permissions', path: '/users/roles' },
       ],
     }] : []),
-    ...(hasAccess('production') ? [{
+    ...(hasAccess('production') || hasAccess('first_fill_test') ? [{
       id: 'production',
       label: 'Production',
       children: [
-        { id: 'production-dashboard', label: 'Overview', path: '/production/dashboard' },
-        { id: 'production-kettles', label: 'Kettles', path: '/production/kettles' },
-        { id: 'production-vertical-tanks', label: 'Vertical Tanks', path: '/production/vertical-tanks' },
-        { id: 'production-storage-tanks', label: 'Storage Tanks', path: '/production/storage-tanks' },
-        ...(hasAccess('production_recipes') ? [{ id: 'recipes', label: 'Product Recipes', path: '/production/recipes' }] : []),
-        { id: 'kettle-logs', label: 'Kettle Logs', path: '/production/kettle-logs' },
+        ...(hasAccess('production') ? [
+          { id: 'production-dashboard', label: 'Overview', path: '/production/dashboard' },
+          { id: 'production-kettles', label: 'Kettles', path: '/production/kettles' },
+          { id: 'production-vertical-tanks', label: 'Vertical Tanks', path: '/production/vertical-tanks' },
+          { id: 'production-storage-tanks', label: 'Storage Tanks', path: '/production/storage-tanks' },
+          ...(hasAccess('production_recipes') ? [{ id: 'recipes', label: 'Product Recipes', path: '/production/recipes' }] : []),
+          { id: 'kettle-logs', label: 'Kettle Logs', path: '/production/kettle-logs' },
+        ] : []),
+        ...(hasAccess('first_fill_test') ? [{ id: 'first-fill-test', label: 'Test', path: '/production/first-fill-test' }] : []),
       ],
     }] : []),
     ...(hasAccess('assembly') || hasAccess('packaging') || hasAccess('finished_product_stock') ? [{

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BASE_URL } from '../utils/api'
+import { BASE_URL, consumeRedirectError } from '../utils/api'
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
@@ -25,6 +25,12 @@ const LoginPage = () => {
       navigate('/dashboard')
     }
   }, [navigate])
+
+  // Show the real error if we were redirected here after a failed API call
+  useEffect(() => {
+    const redirectError = consumeRedirectError()
+    if (redirectError) setError(redirectError)
+  }, [])
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target

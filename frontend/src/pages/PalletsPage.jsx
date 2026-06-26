@@ -7,9 +7,9 @@ import PalletLabelModal from '../components/PalletLabelModal'
 const PAGE_SIZE = 15
 
 const BATCH_TYPE_CONFIG = {
-  FIN: { label: 'Finished', color: 'bg-green-50 text-green-700 border-green-200' },
-  PRD: { label: 'Product',  color: 'bg-blue-50 text-blue-700 border-blue-200' },
-  RAW: { label: 'Raw',      color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  FIN: { label: 'Finished Goods',  color: 'bg-green-50 text-green-700 border-green-200' },
+  PRD: { label: 'Production Goods', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  RAW: { label: 'Raw Materials',    color: 'bg-amber-50 text-amber-700 border-amber-200' },
 }
 
 function StatCard({ label, value, valueColor = 'text-gray-800', bg = 'bg-white', isActive, onClick }) {
