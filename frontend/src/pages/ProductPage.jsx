@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import Topbar from '../components/Topbar';
 import Sidebar from '../components/Sidebar';
 import { apiFetch, parseError } from '../utils/api';
-
-const PAGE_SIZE = 10
+import Pagination from '../components/Pagination';
+import PageSizeSelector, { DEFAULT_PAGE_SIZE } from '../components/PageSizeSelector';
 
 const emptyForm = {
   name: '',
@@ -14,11 +14,13 @@ const emptyForm = {
 
 const ProductPage = () => {
   const [products, setProducts] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
   const [units, setUnits] = useState([])
   const [defaultUnitId, setDefaultUnitId] = useState('')
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [modalOpen, setModalOpen] = useState(false)
   const [editProduct, setEditProduct] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -29,9 +31,19 @@ const ProductPage = () => {
   const filterRef = useRef(null)
 
   useEffect(() => {
-    fetchProducts()
     fetchUnits()
   }, [])
+
+  // Reset to the first page whenever the search term, filters, or page size change
+  useEffect(() => {
+    setPage(1)
+  }, [search, filters, pageSize])
+
+  // Fetch the current page (debounced so rapid typing/filtering collapses into one request)
+  useEffect(() => {
+    const t = setTimeout(fetchProducts, 300)
+    return () => clearTimeout(t)
+  }, [page, search, filters, pageSize])
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -42,28 +54,34 @@ const ProductPage = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const filtered = products.filter(p => {
-    const matchesSearch = p.name?.toLowerCase().includes(search.toLowerCase())
-    const matchesAvail  = filters.is_available === ''
-      ? true
-      : String(p.is_available) === filters.is_available
-    return matchesSearch && matchesAvail
-  })
-
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
 
   const fetchProducts = async () => {
     setLoading(true)
     try {
-      const res = await apiFetch('/master-data/products/')
+      const params = new URLSearchParams()
+      params.append('page', page)
+      params.append('page_size', pageSize)
+      if (search) params.append('search', search)
+      if (filters.is_available !== '') params.append('is_available', filters.is_available)
+
+      const res = await apiFetch(`/master-data/products/?${params.toString()}`)
       if (res && res.ok) {
         const data = await res.json()
-        setProducts(Array.isArray(data) ? data : (data.results ?? []))
+        if (Array.isArray(data)) {
+          setProducts(data)
+          setTotalCount(data.length)
+        } else {
+          setProducts(data.results ?? [])
+          setTotalCount(data.count ?? 0)
+        }
       } else {
         setProducts([])
+        setTotalCount(0)
       }
     } catch {
       setProducts([])
+      setTotalCount(0)
       setError('Failed to load products')
     } finally {
       setLoading(false)
@@ -91,8 +109,9 @@ const ProductPage = () => {
 
   const secondaryUnits = units.filter(u => u.unit_type === 'secondary')
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map(product => {
+  // Server-side pagination: `products` already holds just the current page
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const paginated = products.map(product => {
     const unit = units.find(u => u.id === product.unit) || {}
     return { ...product, unit_name: unit.name || '-', unit_symbol: unit.symbol || '-' }
   })
@@ -274,7 +293,7 @@ const ProductPage = () => {
                     </tr>
                   ) : paginated.map((product, idx) => (
                     <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
+                      <td className="px-6 py-3 text-gray-400">{(page - 1) * pageSize + idx + 1}</td>
                       <td className="px-6 py-3 font-medium text-gray-900">{product.name}</td>
                       <td className="px-6 py-3 text-gray-500 max-w-[160px] truncate">{product.description || '-'}</td>
                       <td className="px-6 py-3">
@@ -318,28 +337,11 @@ const ProductPage = () => {
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
-                Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                Showing {totalCount === 0 ? 0 : (page - 1) * pageSize + 1}-{Math.min(page * pageSize, totalCount)} of {totalCount}
               </p>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >&lsaquo;</button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={`w-7 h-7 rounded text-xs font-medium ${
-                      page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'
-                    }`}
-                  >{p}</button>
-                ))}
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                >&rsaquo;</button>
+              <div className="flex items-center gap-4">
+                <PageSizeSelector pageSize={pageSize} onChange={setPageSize} />
+                <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
               </div>
             </div>
           </div>

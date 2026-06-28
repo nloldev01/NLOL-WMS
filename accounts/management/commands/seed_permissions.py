@@ -19,6 +19,7 @@ MODULES = [
     {'key': 'inventory_core',        'label': 'Inventory Core (Pallets)', 'sort_order': 15},
     {'key': 'inventory_adjust',      'label': 'Stock Adjustments',        'sort_order': 16},
     {'key': 'first_fill_test',       'label': 'First Fill Test (QC)',     'sort_order': 17},
+    {'key': 'consumables',           'label': 'Consumables',              'sort_order': 18},
 ]
 
 # Default access matrix: role_key → {module_key: access_level}
@@ -40,6 +41,7 @@ DEFAULTS = {
         'inventory_core':         'full',
         'inventory_adjust':       'full',
         'first_fill_test':        'full',
+        'consumables':            'full',
     },
     'production': {
         'dashboard':              'view',
@@ -85,6 +87,7 @@ DEFAULTS = {
         'sales':                  'none',
         'inventory_tools':        'view',
         'production_recipes':     'none',
+        'consumables':            'full',
     },
     'user': {
         'dashboard':              'view',
@@ -128,6 +131,7 @@ DEFAULTS = {
         'inventory_tools':        'full',
         'production_recipes':     'none',
         'inventory_core':         'full',
+        'consumables':            'full',
     },
     'manager': {
         'dashboard':              'view',
@@ -147,6 +151,7 @@ DEFAULTS = {
         'inventory_core':         'view',
         'inventory_adjust':       'full',
         'first_fill_test':        'view',
+        'consumables':            'view',
     },
     'dealer': {
         'dashboard':              'view',

@@ -198,6 +198,51 @@ function CheckTab() {
 function CheckResult({ result }) {
   const { type, data } = result
 
+  if (type === 'pallet') {
+    const items = data.items || []
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <p className="text-base font-semibold text-gray-900 font-mono">{data.pallet_code}</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {data.is_sealed ? 'Sealed' : 'Open'} pallet
+            </p>
+          </div>
+          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full font-medium">
+            {items.length} {items.length === 1 ? 'item' : 'items'}
+          </span>
+        </div>
+        {!items.length ? (
+          <p className="px-6 py-8 text-center text-gray-400 text-sm">Empty pallet.</p>
+        ) : (
+          <table className="w-full text-sm text-left">
+            <thead>
+              <tr className="bg-primary text-white text-xs uppercase">
+                <th className="px-6 py-3">Type</th>
+                <th className="px-6 py-3">Item</th>
+                <th className="px-6 py-3">Batch / LPN</th>
+                <th className="px-6 py-3 text-right">Qty</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {items.map((s, i) => (
+                <tr key={i} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4"><Badge type={s.stock_type} /></td>
+                  <td className="px-6 py-4 font-medium text-gray-900">{s.item_label || '—'}</td>
+                  <td className="px-6 py-4 font-mono text-xs text-gray-400">
+                    {s.batch_code}{s.batch_code && s.lpn_code && ' · '}{s.lpn_code}
+                  </td>
+                  <td className="px-6 py-4 text-right font-semibold text-gray-800">{s.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    )
+  }
+
   if (type === 'location') {
     return (
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">

@@ -20,6 +20,7 @@ const LPNFinderPage = () => {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [item, setItem] = useState(null)
+  const [pallet, setPallet] = useState(null)
   const [history, setHistory] = useState([])
   const [error, setError] = useState(null)
   const [isScannerOpen, setIsScannerOpen] = useState(false)
@@ -51,11 +52,25 @@ const LPNFinderPage = () => {
     setLoading(true)
     setError(null)
     setItem(null)
+    setPallet(null)
     setHistory([])
     setQuery(code)
     setScannedCode(code) // Track what we are looking for
 
     try {
+      // 0. Pallet codes (PAL-...) resolve to a contents list
+      if (code.toUpperCase().startsWith('PAL-')) {
+        const palletRes = await apiFetch(`/inventory-core/pallets/scan/?code=${encodeURIComponent(code)}`)
+        if (palletRes.ok) {
+          setPallet(await palletRes.json())
+          setIsScannerOpen(false)
+        } else {
+          setError('No pallet found for this code.')
+        }
+        setLoading(false)
+        return
+      }
+
       // 1. Search Core Identity (Batches)
       let batchRes = await apiFetch(`/inventory-core/batches/?search=${code}`)
       let batchDataRaw = await batchRes.json()
@@ -102,7 +117,7 @@ const LPNFinderPage = () => {
           ...foundBatch,
           type,
           material_name: foundBatch.raw_material_name || foundBatch.material_name,
-          product_name: foundBatch.finished_product_variant_name || foundBatch.product_name,
+          product_name: foundBatch.finished_product_variant_label || foundBatch.finished_product_variant_name || foundBatch.product_name,
           totalQuantity,
           quantity: specificRecord ? specificRecord.quantity : totalQuantity,
           location_name: specificRecord ? specificRecord.location_name : (stockData.length > 1 ? `${stockData.length} Locations` : (stockData[0]?.location_name || 'No Active Stock')),
@@ -113,10 +128,10 @@ const LPNFinderPage = () => {
 
         // 4. Fetch History
         const logEndpoint = type === 'raw'
-          ? `/raw-materials-stock/stock-movements/?batch=${foundBatch.id}`
+          ? `/raw-materials-stock/stock-movements/?batch=${foundBatch.id}&page_size=200`
           : type === 'finished'
-            ? `/products-stock/finished-product-stock-movements/?batch=${foundBatch.id}`
-            : `/products-stock/stock-movements/?batch=${foundBatch.id}`
+            ? `/products-stock/finished-product-stock-movements/?batch=${foundBatch.id}&page_size=200`
+            : `/products-stock/stock-movements/?batch=${foundBatch.id}&page_size=200`
         
         const historyRes = await apiFetch(logEndpoint)
         const historyData = await historyRes.json()
@@ -177,7 +192,7 @@ const LPNFinderPage = () => {
           {/* Main Scanner Input */}
           <div className="mb-12 text-center">
             <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-4">LPN & Batch Finder</h1>
-            <p className="text-slate-500 mb-8 max-w-lg mx-auto">Scan or enter any License Plate Number (LPN) or Batch Code to find its exact location and history.</p>
+            <p className="text-slate-500 mb-8 max-w-lg mx-auto">Scan or enter any License Plate Number (LPN), Batch Code, or Pallet Code to find its exact location and history.</p>
             
             <div className="relative max-w-2xl mx-auto mb-6">
               <div className="absolute left-6 top-1/2 -translate-y-1/2">
@@ -248,7 +263,7 @@ const LPNFinderPage = () => {
                 </div>
                 <div id="reader" className="w-full"></div>
                 <div className="p-6 bg-slate-50 text-center">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Point camera at a Batch or LPN Label</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Point camera at a Batch, LPN, or Pallet Label</p>
                 </div>
               </div>
             </div>
@@ -260,6 +275,66 @@ const LPNFinderPage = () => {
             <div className="mb-8 p-4 bg-red-50 border border-red-100 text-red-700 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
               <InformationCircleIcon className="w-5 h-5" />
               <span className="font-bold">{error}</span>
+            </div>
+          )}
+
+          {pallet && (
+            <div className="space-y-8 animate-in fade-in zoom-in duration-500">
+              {/* PALLET HERO */}
+              <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-slate-200 flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden">
+                <div className="absolute right-0 top-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
+                <div className="flex items-center gap-6 relative z-10">
+                  <div className="w-20 h-20 rounded-3xl flex items-center justify-center bg-orange-500 shadow-xl shadow-black/20">
+                    <ArchiveBoxIcon className="w-12 h-12" />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-black leading-tight font-mono">{pallet.pallet_code}</h2>
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">
+                      Pallet • {pallet.is_sealed ? 'Sealed' : 'Open'}
+                      {pallet.created_by_name && ` • ${pallet.created_by_name}`}
+                      {pallet.created_at && ` • ${new Date(pallet.created_at).toLocaleDateString()}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-8 relative z-10 bg-white/10 px-8 py-4 rounded-3xl backdrop-blur-md border border-white/10">
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Items</p>
+                    <span className="text-3xl font-black text-orange-500">{pallet.total_items ?? (pallet.items?.length || 0)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* PALLET CONTENTS */}
+              <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Pallet Contents</h3>
+                  <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full">{pallet.items?.length || 0} Items</span>
+                </div>
+                {!pallet.items?.length ? (
+                  <p className="px-6 py-12 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest">This pallet is empty.</p>
+                ) : (
+                  <div className="divide-y divide-slate-50">
+                    {pallet.items.map((it) => (
+                      <div key={it.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${it.batch_type === 'RAW' ? 'bg-blue-100 text-blue-600' : it.batch_type === 'FIN' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
+                            {it.batch_type}
+                          </span>
+                          <div>
+                            <p className="text-[12px] font-black text-slate-900">{it.item_label || '—'}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[9px] font-mono text-slate-400">{it.batch_code}</span>
+                              <span className="text-[9px] font-mono text-slate-300">·</span>
+                              <span className="text-[9px] font-mono text-slate-400">{it.lpn_code}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-sm font-black text-slate-900">{parseFloat(it.quantity).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -456,7 +531,7 @@ const LPNFinderPage = () => {
             </div>
           )}
 
-          {!item && !loading && !error && (
+          {!item && !pallet && !loading && !error && (
             <div className="py-24 text-center">
                <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-slate-100 border border-slate-50">
                   <QrCodeIcon className="w-16 h-16 text-slate-100" />

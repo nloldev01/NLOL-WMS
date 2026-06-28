@@ -43,6 +43,7 @@ const Sidebar = () => {
     'stock-identity': FingerPrintIcon,
     production: WrenchScrewdriverIcon,
     packaging: CubeTransparentIcon,
+    consumables: WrenchScrewdriverIcon,
     sales: CreditCardIcon,
     system: CircleStackIcon,
   }
@@ -93,7 +94,7 @@ const Sidebar = () => {
           ...(hasAccess('production_recipes') ? [{ id: 'recipes', label: 'Product Recipes', path: '/production/recipes' }] : []),
           { id: 'kettle-logs', label: 'Kettle Logs', path: '/production/kettle-logs' },
         ] : []),
-        ...(hasAccess('first_fill_test') ? [{ id: 'first-fill-test', label: 'Test', path: '/production/first-fill-test' }] : []),
+        ...(hasAccess('first_fill_test') ? [{ id: 'first-fill-test', label: 'First Fill Test', path: '/production/first-fill-test' }] : []),
       ],
     }] : []),
     ...(hasAccess('assembly') || hasAccess('packaging') || hasAccess('finished_product_stock') ? [{
@@ -107,6 +108,11 @@ const Sidebar = () => {
         ...(hasAccess('finished_product_stock') ? [{ id: 'finished-product-stock', label: 'FP Stock', path: '/packaging/finished-product-stock' }] : []),
         ...(hasAccess('finished_product_stock') ? [{ id: 'finished-product-logs', label: 'FP Movements', path: '/packaging/finished-product-logs' }] : []),
       ],
+    }] : []),
+    ...(hasAccess('consumables') ? [{
+      id: 'consumables',
+      label: 'Consumables',
+      path: '/consumables',
     }] : []),
     ...(hasAccess('sales') || hasAccess('dispatch') ? [{
       id: 'sales',

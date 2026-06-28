@@ -39,6 +39,7 @@ import RolesPermissionsPage from './pages/RolesPermissionsPage';
 import BackupRestorePage from './pages/BackupRestorePage';
 import PalletsPage from './pages/PalletsPage';
 import ScannerPage from './pages/ScannerPage';
+import ConsumablesPage from './pages/ConsumablesPage';
 
 const PR = ({ module, minAccess, children }) => (
   <ProtectedRoute module={module} minAccess={minAccess}>{children}</ProtectedRoute>
@@ -101,6 +102,9 @@ function App() {
         <Route path="/packaging/refill-orders"          element={<PR module="refill"><RefillOrdersPage /></PR>} />
         <Route path="/packaging/finished-product-stock" element={<PR module="finished_product_stock"><FinishedProductStockPage /></PR>} />
         <Route path="/packaging/finished-product-logs"  element={<PR module="finished_product_stock"><FinishedProductMovementPage /></PR>} />
+
+        {/* Consumables */}
+        <Route path="/consumables" element={<PR module="consumables"><ConsumablesPage /></PR>} />
 
         {/* Sales */}
         <Route path="/sales" element={<Navigate to="/sales/dashboard" replace />} />

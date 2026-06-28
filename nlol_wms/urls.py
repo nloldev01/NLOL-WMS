@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/assembly/', include('assembly.urls')),
     path('api/refill/', include('refill.urls')),
     path('api/dispatch/', include('dispatch.urls')),
+    path('api/consumables/', include('consumables.urls')),
     # React SPA catch-all — must be last
     re_path(r'^(?!api/|admin/|static/).*$', TemplateView.as_view(template_name='index.html')),
 ]

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
+from nlol_wms.pagination import StandardResultsPagination
 from inventory_core.models import Batch
 from inventory_core.services.batch_service import BatchService
 from .models import ProductStock, ProductStockLog, FinishedProductStock, FinishedProductStockLog
@@ -39,6 +40,7 @@ class ProductStockLogViewSet(viewsets.ModelViewSet):
         'performed_by', 'batch',
     ).all()
     serializer_class = ProductStockLogSerializer
+    pagination_class = StandardResultsPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['product', 'location', 'movement_type', 'batch', 'supplier']
     search_fields = ['product__name', 'reference', 'notes']
@@ -157,6 +159,7 @@ class FinishedProductStockLogViewSet(viewsets.ModelViewSet):
         'performed_by', 'batch', 'lpn', 'supplier',
     ).all()
     serializer_class = FinishedProductStockLogSerializer
+    pagination_class = StandardResultsPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['finished_product_variant', 'finished_product_variant__finished_product', 'location', 'movement_type', 'batch', 'lpn', 'supplier']
     search_fields = ['finished_product_variant__finished_product__name', 'reference', 'notes', 'lpn__lpn_code']

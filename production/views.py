@@ -352,9 +352,22 @@ class FirstFillTestViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Resolve the report format for this product: the product's own
-        # default_test if set, otherwise the single active TestDefinition.
-        test_definition = batch.product.default_test if batch.product else None
+        # Resolve the report format. Priority:
+        #   1. a test format the operator explicitly chose at start time,
+        #   2. the product's own default_test,
+        #   3. the single active TestDefinition, if exactly one exists.
+        test_definition = None
+        td_id = request.data.get('test_definition_id')
+        if td_id:
+            try:
+                test_definition = TestDefinition.objects.get(id=td_id, is_active=True)
+            except TestDefinition.DoesNotExist:
+                return Response(
+                    {'error': 'The selected test format was not found or is inactive.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if not test_definition:
+            test_definition = batch.product.default_test if batch.product else None
         if not test_definition:
             active = list(TestDefinition.objects.filter(is_active=True)[:2])
             if len(active) == 1:
@@ -362,7 +375,8 @@ class FirstFillTestViewSet(viewsets.ModelViewSet):
         if not test_definition:
             return Response(
                 {'error': 'No First Fill Test format is configured for this product. '
-                          'Set Product.default_test or seed exactly one active TestDefinition.'},
+                          'Choose a test format, set Product.default_test, or seed '
+                          'exactly one active TestDefinition.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

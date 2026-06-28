@@ -4,8 +4,8 @@ import Sidebar from '../components/Sidebar'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch, getApiError } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
-
-const PAGE_SIZE = 10
+import Pagination from '../components/Pagination'
+import PageSizeSelector, { DEFAULT_PAGE_SIZE } from '../components/PageSizeSelector'
 
 const MOVEMENT_TYPES = [
   { value: 'packaging_production', label: 'Packaging Production', color: 'bg-emerald-50 text-emerald-700' },
@@ -20,9 +20,18 @@ const MOVEMENT_TYPES = [
   { value: 'wastage',              label: 'Wastage',              color: 'bg-rose-50 text-rose-700' },
 ]
 
-const MOVEMENT_MAP = Object.fromEntries(MOVEMENT_TYPES.map(m => [m.value, m]))
-const INBOUND_TYPES  = new Set(['packaging_production', 'purchase', 'sale_return', 'transfer_in', 'adjustment_in'])
-const OUTBOUND_TYPES = new Set(['sale', 'purchase_return', 'transfer_out', 'adjustment', 'wastage'])
+// System-generated types (refill / dispatch) aren't manually recordable, so they live
+// in a display-only superset used for history badges + the filter dropdown.
+const HISTORY_MOVEMENT_TYPES = [
+  ...MOVEMENT_TYPES,
+  { value: 'refill_in',    label: 'Refill In',          color: 'bg-cyan-50 text-cyan-700' },
+  { value: 'refill_out',   label: 'Refill Out',         color: 'bg-amber-50 text-amber-700' },
+  { value: 'dispatch_out', label: 'Dispatch to Dealer', color: 'bg-sky-50 text-sky-700' },
+]
+
+const MOVEMENT_MAP = Object.fromEntries(HISTORY_MOVEMENT_TYPES.map(m => [m.value, m]))
+const INBOUND_TYPES  = new Set(['packaging_production', 'purchase', 'sale_return', 'transfer_in', 'adjustment_in', 'refill_in'])
+const OUTBOUND_TYPES = new Set(['sale', 'purchase_return', 'transfer_out', 'adjustment', 'wastage', 'refill_out', 'dispatch_out'])
 
 const emptyForm = {
   finished_product: '',
@@ -71,6 +80,8 @@ const QuickPickSuggestions = ({ suggestions, onPick }) => {
 const FinishedProductMovementPage = () => {
   const navigate = useNavigate()
   const [logs, setLogs]                         = useState([])
+  const [totalCount, setTotalCount]             = useState(0)
+  const [pageSize, setPageSize]                 = useState(DEFAULT_PAGE_SIZE)
   const [finishedProducts, setFinishedProducts] = useState([])
   const [variants, setVariants]                 = useState([])
   const [variantsLoading, setVariantsLoading]   = useState(false)
@@ -108,9 +119,16 @@ const FinishedProductMovementPage = () => {
     fetchLocations()
   }, [])
 
+  // Reset to the first page whenever the search term, filters, or page size change
   useEffect(() => {
-    fetchLogs()
-  }, [search, filters])
+    setPage(1)
+  }, [search, filters, pageSize])
+
+  // Fetch the current page (debounced so rapid typing/filtering collapses into one request)
+  useEffect(() => {
+    const t = setTimeout(fetchLogs, 300)
+    return () => clearTimeout(t)
+  }, [page, search, filters, pageSize])
 
   useEffect(() => {
     if (filters.finished_product) {
@@ -164,6 +182,8 @@ const FinishedProductMovementPage = () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
+      params.append('page', page)
+      params.append('page_size', pageSize)
       if (search) params.append('search', search)
       if (filters.movement_type)         params.append('movement_type', filters.movement_type)
       if (filters.finished_product_variant) params.append('finished_product_variant', filters.finished_product_variant)
@@ -171,8 +191,12 @@ const FinishedProductMovementPage = () => {
       if (filters.location) params.append('location', filters.location)
       if (filters.batch)    params.append('batch', filters.batch)
       const res = await apiFetch(`/products-stock/finished-product-stock-movements/?${params.toString()}`)
-      if (res && res.ok) { const data = await res.json(); setLogs(Array.isArray(data) ? data : (data.results ?? [])) }
-      else setLogs([])
+      if (res && res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) { setLogs(data); setTotalCount(data.length) }
+        else { setLogs(data.results ?? []); setTotalCount(data.count ?? 0) }
+      }
+      else { setLogs([]); setTotalCount(0) }
     } catch { setError('Failed to load logs') }
     finally { setLoading(false) }
   }
@@ -213,8 +237,9 @@ const FinishedProductMovementPage = () => {
   }
 
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
-  const totalPages = Math.max(1, Math.ceil(logs.length / PAGE_SIZE))
-  const paginated  = logs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  // Server-side pagination: `logs` already holds just the current page
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const paginated  = logs
 
   const isTransfer = ['transfer_out', 'transfer_in'].includes(form.movement_type)
   const isOutbound = OUTBOUND_TYPES.has(form.movement_type)
@@ -325,7 +350,7 @@ const FinishedProductMovementPage = () => {
                         <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Movement Type</label>
                         <select value={filters.movement_type} onChange={e => { setFilters(f => ({ ...f, movement_type: e.target.value })); setPage(1) }} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300">
                           <option value="">All</option>
-                          {MOVEMENT_TYPES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                          {HISTORY_MOVEMENT_TYPES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                         </select>
                       </div>
                       <div>
@@ -389,7 +414,7 @@ const FinishedProductMovementPage = () => {
                     const mType = MOVEMENT_MAP[log.movement_type]
                     return (
                       <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
+                        <td className="px-6 py-3 text-gray-400">{(page - 1) * pageSize + idx + 1}</td>
                         <td className="px-6 py-3 font-medium text-gray-900">
                           {log.finished_product_name}
                           {log.finished_product_variant_label && (
@@ -459,13 +484,10 @@ const FinishedProductMovementPage = () => {
             )}
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
-              <p className="text-xs text-gray-400">Showing {logs.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, logs.length)} of {logs.length}</p>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30">‹</button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                  <button key={p} onClick={() => setPage(p)} className={`w-7 h-7 rounded text-xs font-medium ${page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>{p}</button>
-                ))}
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30">›</button>
+              <p className="text-xs text-gray-400">Showing {totalCount === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalCount)} of {totalCount}</p>
+              <div className="flex items-center gap-4">
+                <PageSizeSelector pageSize={pageSize} onChange={setPageSize} />
+                <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
               </div>
             </div>
           </div>

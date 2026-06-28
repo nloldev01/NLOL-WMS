@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
 from accounts.permissions import ModulePermission
+from nlol_wms.pagination import OptionalResultsPagination
 from .models import Unit, FiscalYear, Asset, Location, RawMaterialAndConsumable, ProductGroup, ProductSubGroup, ProductSegment, Product, Parameter, TestDefinition, TestDefinitionParameter, FinishedProduct, FinishedProductVariant, Supplier
 from .serializers import UnitSerializer, FiscalYearSerializer, AssetSerializer, LocationSerializer, RawMaterialAndConsumableSerializer, ProductGroupSerializer, ProductSubGroupSerializer, ProductSegmentSerializer, ProductSerializer, ParameterSerializer, TestDefinitionSerializer, TestDefinitionParameterSerializer, FinishedProductSerializer, FinishedProductVariantSerializer, SupplierSerializer
 
@@ -180,9 +181,12 @@ class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = ModulePermission.read_write('master_data')
     queryset = Product.objects.select_related('unit').all()
     serializer_class = ProductSerializer
+    pagination_class = OptionalResultsPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['is_available']
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'is_available']
+    ordering = ['name']
 
 
 class ParameterViewSet(viewsets.ModelViewSet):

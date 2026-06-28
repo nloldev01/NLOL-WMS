@@ -8,6 +8,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
 
+from nlol_wms.pagination import StandardResultsPagination
 from master_data.models import Location
 from inventory_core.models import Batch
 from inventory_core.services.batch_service import BatchService
@@ -112,6 +113,7 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
     permission_classes = [IsAuthenticated]
     serializer_class   = RawMaterialStockLogSerializer
+    pagination_class   = StandardResultsPagination
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields   = ['material', 'location', 'movement_type', 'batch', 'supplier']
     search_fields      = ['material__name', 'reference', 'notes']

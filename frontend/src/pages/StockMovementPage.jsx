@@ -4,8 +4,8 @@ import Sidebar from '../components/Sidebar'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch, parseError } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
-
-const PAGE_SIZE = 10
+import Pagination from '../components/Pagination'
+import PageSizeSelector, { DEFAULT_PAGE_SIZE } from '../components/PageSizeSelector'
 
 const MOVEMENT_TYPES = [
   { value: 'purchase', label: 'Purchase / Receipt', color: 'bg-green-50 text-green-700' },
@@ -220,6 +220,8 @@ const QuickAddLocationModal = ({ isOpen, onClose, onAdd, locations }) => {
 const StockMovementPage = () => {
   const navigate = useNavigate()
   const [logs, setLogs]           = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [pageSize, setPageSize]   = useState(DEFAULT_PAGE_SIZE)
   const [materials, setMaterials] = useState([])
   const [locations, setLocations] = useState([])
   const [suppliers, setSuppliers] = useState([])
@@ -260,10 +262,17 @@ const StockMovementPage = () => {
     fetchSuppliers()
   }, [])
 
+  // Reset to the first page whenever the search term, filters, or page size change
   useEffect(() => {
-    fetchLogs()
-  }, [search, filters])
-  
+    setPage(1)
+  }, [search, filters, pageSize])
+
+  // Fetch the current page (debounced so rapid typing/filtering collapses into one request)
+  useEffect(() => {
+    const t = setTimeout(fetchLogs, 300)
+    return () => clearTimeout(t)
+  }, [page, search, filters, pageSize])
+
   // Fetch batches for filter whenever material filter changes
   useEffect(() => {
     fetchFilterBatches(filters.material)
@@ -282,6 +291,8 @@ const StockMovementPage = () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
+      params.append('page', page)
+      params.append('page_size', pageSize)
       if (search) params.append('search', search)
       if (filters.movement_type) params.append('movement_type', filters.movement_type)
       if (filters.material) params.append('material', filters.material)
@@ -292,9 +303,16 @@ const StockMovementPage = () => {
       const res = await apiFetch(`/raw-materials-stock/stock-movements/?${params.toString()}`)
       if (res && res.ok) {
         const data = await res.json()
-        setLogs(Array.isArray(data) ? data : (data.results ?? []))
+        if (Array.isArray(data)) {
+          setLogs(data)
+          setTotalCount(data.length)
+        } else {
+          setLogs(data.results ?? [])
+          setTotalCount(data.count ?? 0)
+        }
       } else {
         setLogs([])
+        setTotalCount(0)
       }
     } catch {
       setLogs([])
@@ -406,11 +424,11 @@ const StockMovementPage = () => {
     return false
   }
 
-  const filtered = logs
+  // Server-side pagination: `logs` already holds just the current page
+  const paginated = logs
 
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   const isTransfer = ['transfer_out', 'transfer_in'].includes(form.movement_type)
   const isOutbound = ['usage', 'wastage', 'transfer_out', 'return', 'transfer_in'].includes(form.movement_type)
@@ -686,7 +704,7 @@ const StockMovementPage = () => {
                     const mType = MOVEMENT_MAP[log.movement_type]
                     return (
                       <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
+                        <td className="px-6 py-3 text-gray-400">{(page - 1) * pageSize + idx + 1}</td>
                         <td className="px-6 py-3 font-medium text-gray-900">{log.material_name}</td>
                         <td className="px-6 py-3">
                           <div className="flex flex-col gap-0.5">
@@ -762,18 +780,11 @@ const StockMovementPage = () => {
 
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
               <p className="text-xs text-gray-400">
-                Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                Showing {totalCount === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalCount)} of {totalCount}
               </p>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                  className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30">‹</button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                  <button key={p} onClick={() => setPage(p)}
-                    className={`w-7 h-7 rounded text-xs font-medium ${page === p ? 'bg-orange-500 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
-                  >{p}</button>
-                ))}
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  className="px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30">›</button>
+              <div className="flex items-center gap-4">
+                <PageSizeSelector pageSize={pageSize} onChange={setPageSize} />
+                <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
               </div>
             </div>
           </div>

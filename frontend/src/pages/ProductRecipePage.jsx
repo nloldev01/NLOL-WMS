@@ -311,7 +311,13 @@ const ProductRecipePage = () => {
 
                   </div>
                 </div>
-              ) : isEditing ? (
+              ) : isEditing ? (() => {
+                // The basis unit follows the selected product's own unit (products are
+                // created in litres, so this normally renders as "per 1 L"). Falls back
+                // to 'L' before a product is chosen.
+                const basisUnit = products.find(p => String(p.id) === String(form.product))?.unit_symbol || 'L';
+                const itemsTotal = form.items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0);
+                return (
                 <div className="p-8 max-w-4xl mx-auto">
                   <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
                     <div className="px-8 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
@@ -380,12 +386,21 @@ const ProductRecipePage = () => {
                         </div>
                       </div>
 
+                      <div className="mb-4 flex items-start gap-2 rounded-xl border border-orange-100 bg-orange-50/60 px-4 py-3">
+                        <svg className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p className="text-[11px] leading-relaxed text-orange-800">
+                          Enter quantities <span className="font-bold">per 1 {basisUnit}</span> of finished product — not for the full batch. The system multiplies these by the order's target quantity when a production order is created.
+                        </p>
+                      </div>
+
                       <div className="border border-gray-100 rounded-xl overflow-hidden">
                         <table className="w-full text-left">
                           <thead className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">
                             <tr>
                               <th className="px-4 py-3">Material</th>
-                              <th className="px-4 py-3 w-40">Quantity</th>
+                              <th className="px-4 py-3 w-40">Quantity / 1 {basisUnit}</th>
                               <th className="px-4 py-3 w-12"></th>
                             </tr>
                           </thead>
@@ -407,13 +422,16 @@ const ProductRecipePage = () => {
                                   </select>
                                 </td>
                                 <td className="px-4 py-2">
-                                  <input
-                                    type="number"
-                                    value={item.quantity}
-                                    onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                                    placeholder="0.00"
-                                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-1 focus:ring-orange-500 outline-none font-mono"
-                                  />
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      value={item.quantity}
+                                      onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                                      placeholder="0.00"
+                                      className="w-full bg-white border border-gray-200 rounded-lg pl-3 pr-16 py-1.5 text-sm focus:ring-1 focus:ring-orange-500 outline-none font-mono"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-semibold text-gray-300 uppercase tracking-wider pointer-events-none">per 1 {basisUnit}</span>
+                                  </div>
                                 </td>
                                 <td className="px-4 py-2 text-center">
                                   <button
@@ -429,12 +447,22 @@ const ProductRecipePage = () => {
                               </tr>
                             ))}
                           </tbody>
+                          {form.items.length > 0 && (
+                            <tfoot className="bg-gray-50 border-t border-gray-100">
+                              <tr>
+                                <td className="px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total per 1 {basisUnit}</td>
+                                <td className="px-4 py-2.5 font-mono text-sm font-bold text-gray-700">{itemsTotal.toLocaleString()}</td>
+                                <td className="px-4 py-2.5"></td>
+                              </tr>
+                            </tfoot>
+                          )}
                         </table>
                       </div>
                     </div>
                   </div>
                 </div>
-              ) : (
+                );
+              })() : (
                 <div className="h-full flex items-center justify-center text-gray-400 p-12 text-center">
                   <div>
                     <svg className="w-16 h-16 mx-auto mb-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">

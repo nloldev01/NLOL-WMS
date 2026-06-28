@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import models
 import uuid
 from django.db import connection, transaction
@@ -517,5 +518,11 @@ class FinishedProductVariant(models.Model):
         return candidate
 
     def __str__(self):
-        return f"{self.finished_product.name} {self.volume}{self.volume_unit.symbol} ({self.unit.name})"
+        return self.display_label
+
+    @property
+    def display_label(self):
+        volume = self.volume.quantize(Decimal('1')) if self.volume == self.volume.to_integral() else self.volume.normalize()
+        material = f", {self.get_material_display()}" if self.material else ""
+        return f"{self.finished_product.name} ({volume}{self.volume_unit.symbol} {self.unit.name}{material})"
 

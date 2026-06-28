@@ -193,8 +193,8 @@ class TestDefinitionParameterSerializer(serializers.ModelSerializer):
     parameter_code = serializers.CharField(source='parameter.code', read_only=True)
     parameter_name = serializers.CharField(source='parameter.name', read_only=True)
     value_type      = serializers.CharField(source='parameter.value_type', read_only=True)
-    resolved_method = serializers.CharField(source='resolved_method', read_only=True)
-    resolved_unit   = serializers.CharField(source='resolved_unit', read_only=True)
+    resolved_method = serializers.CharField(read_only=True)
+    resolved_unit   = serializers.CharField(read_only=True)
     specification   = serializers.CharField(source='specification_display', read_only=True)
 
     class Meta:
@@ -287,8 +287,7 @@ class FinishedProductVariantSerializer(serializers.ModelSerializer):
         ]
 
     def get_display_label(self, obj):
-        material = f" ({obj.get_material_display()})" if obj.material else ""
-        return f"{obj.finished_product.name} {obj.volume}{obj.volume_unit.symbol} {obj.unit.name}{material}"
+        return obj.display_label
 
 class SupplierSerializer(serializers.ModelSerializer):
     class Meta:

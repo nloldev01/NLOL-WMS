@@ -44,6 +44,8 @@ const previewVerdict = (row, resultText) => {
 const FirstFillTestPage = () => {
   const [queueBatches, setQueueBatches] = useState([])
   const [tests, setTests]               = useState([])
+  const [testDefs, setTestDefs]         = useState([])
+  const [selectedFormat, setSelectedFormat] = useState({}) // batch.id -> test_definition id
   const [queueLoading, setQueueLoading] = useState(true)
   const [testsLoading, setTestsLoading] = useState(true)
   const [actionError, setActionError]   = useState('')
@@ -56,7 +58,18 @@ const FirstFillTestPage = () => {
   const [submitting, setSubmitting]     = useState(false)
   const [issuing, setIssuing]           = useState(false)
 
-  useEffect(() => { fetchQueue(); fetchTests() }, [])
+  useEffect(() => { fetchQueue(); fetchTests(); fetchTestDefs() }, [])
+
+  const fetchTestDefs = async () => {
+    try {
+      const res = await apiFetch('/master-data/test-definitions/')
+      if (res?.ok) {
+        const d = await res.json()
+        const items = (Array.isArray(d) ? d : (d.results ?? [])).filter(t => t.is_active)
+        setTestDefs(items)
+      }
+    } catch { /* ignore */ }
+  }
 
   const fetchQueue = async () => {
     setQueueLoading(true)
@@ -87,9 +100,18 @@ const FirstFillTestPage = () => {
   const startTest = async (batch) => {
     setActionError(''); setActionLoading(batch.id)
     try {
+      // When more than one active format exists, the operator must pick which
+      // one applies; with a single format the server auto-resolves it.
+      const td = selectedFormat[batch.id] || (testDefs.length === 1 ? testDefs[0].id : null)
+      if (testDefs.length > 1 && !td) {
+        setActionError('Choose a test format before starting.')
+        setActionLoading(null)
+        return
+      }
+      const body = td ? { batch_id: batch.id, test_definition_id: td } : { batch_id: batch.id }
       const res = await apiFetch('/production/first-fill-tests/start/', {
         method: 'POST',
-        body: JSON.stringify({ batch_id: batch.id }),
+        body: JSON.stringify(body),
       })
       if (res?.ok) {
         const data = await res.json()
@@ -194,6 +216,18 @@ const FirstFillTestPage = () => {
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${QUALITY_CONFIG[batch.quality_status]?.color}`}>{QUALITY_CONFIG[batch.quality_status]?.label}</span>
                     </div>
                     <div className="text-xs font-medium text-gray-700 mb-2">{batch.product_name}</div>
+                    {canEdit && testDefs.length > 1 && (
+                      <select
+                        value={selectedFormat[batch.id] || ''}
+                        onChange={e => setSelectedFormat(s => ({ ...s, [batch.id]: e.target.value }))}
+                        className="mb-2 w-full rounded-md border border-gray-200 px-1.5 py-1 text-[10px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-teal-400"
+                      >
+                        <option value="">Select test format…</option>
+                        {testDefs.map(td => (
+                          <option key={td.id} value={td.id}>{td.name}</option>
+                        ))}
+                      </select>
+                    )}
                     {canEdit && (
                       <button
                         onClick={() => startTest(batch)}
