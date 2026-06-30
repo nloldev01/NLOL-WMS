@@ -6,21 +6,25 @@ import PageSizeSelector, { DEFAULT_PAGE_SIZE } from '../components/PageSizeSelec
 import { apiFetch, getApiError, hasAccess } from '../utils/api'
 
 const STATUS_CONFIG = {
-  draft:      { label: 'Draft',      color: 'bg-slate-100 text-slate-600' },
   submitted:  { label: 'Submitted',  color: 'bg-amber-50 text-amber-700' },
   approved:   { label: 'Approved',   color: 'bg-blue-50 text-blue-700' },
   rejected:   { label: 'Rejected',   color: 'bg-red-50 text-red-600' },
   dispatched: { label: 'Dispatched', color: 'bg-violet-50 text-violet-700' },
   returned:   { label: 'Returned',   color: 'bg-green-50 text-green-700' },
+  consumed:   { label: 'Consumed',   color: 'bg-teal-50 text-teal-700' },
 }
 
-const emptyForm = { source_location: '', assembly_reference: '', notes: '', items: [] }
+// Terminal states reached once a return has been recorded.
+const COMPLETED_STATUSES = ['returned', 'consumed']
+
+const emptyForm = { assembly_reference: '', notes: '', items: [] }
 
 export default function ConsumablesPage() {
   const canWrite = hasAccess('consumables', 'full')
 
   const [requests, setRequests]   = useState([])
   const [totalCount, setTotalCount] = useState(0)
+  const [stats, setStats]         = useState({ total: 0, pending_approval: 0, by_status: {} })
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [search, setSearch]       = useState('')
@@ -47,16 +51,15 @@ export default function ConsumablesPage() {
   const [actionLoading, setActionLoading] = useState(null)
   const [actionError, setActionError]   = useState('')
 
-  // Add-item form (draft)
-  const [newItem, setNewItem]   = useState({ material: '', requested_quantity: '' })
   // Approve / dispatch / return inputs
   const [approveItems, setApproveItems] = useState({})
+  const [approveSource, setApproveSource] = useState('')   // source location chosen at approval
   const [usedItems, setUsedItems]       = useState({})
   const [destination, setDestination]   = useState('')
   const [rejectReason, setRejectReason] = useState('')
   const [showReject, setShowReject]     = useState(false)
 
-  useEffect(() => { fetchConsumables(); fetchLocations(); fetchAssemblyLocations() }, [])
+  useEffect(() => { fetchConsumables(); fetchLocations(); fetchAssemblyLocations(); fetchStats() }, [])
   useEffect(() => { setPage(1) }, [search, statusFilter, pageSize])
   useEffect(() => { const t = setTimeout(fetchRequests, 250); return () => clearTimeout(t) }, [page, search, statusFilter, pageSize])
 
@@ -76,7 +79,10 @@ export default function ConsumablesPage() {
     })
     setApproveItems(ap); setUsedItems(us)
     setDestination(''); setShowReject(false); setRejectReason('')
-    setNewItem({ material: '', requested_quantity: '' })
+    // Pre-fill the source picker if one was already set, else clear it; refresh
+    // the at-a-glance stock map for that source.
+    setApproveSource(detail.source_location ? String(detail.source_location) : '')
+    fetchSourceStock(detail.source_location || '')
   }, [detail?.id, detail?.status])
 
   const fetchRequests = async () => {
@@ -97,18 +103,32 @@ export default function ConsumablesPage() {
     finally { setLoading(false) }
   }
 
+  const fetchStats = async () => {
+    try {
+      const res = await apiFetch('/consumables/requests/stats/')
+      if (res?.ok) setStats(await res.json())
+    } catch { /* non-critical */ }
+  }
+
   const fetchConsumables = async () => {
     const res = await apiFetch('/master-data/raw-materials-and-consumables/?type=consumable')
     if (res?.ok) { const d = await res.json(); setConsumables(Array.isArray(d) ? d : (d.results ?? [])) }
   }
 
+  // Consumables live inside the factory only — restrict pickers to the factory
+  // sub-tree, and keep storage tanks/kettles and assembly lines (a dispatch
+  // *destination*, never a source — they hold no consumable stock) out of the list.
   const fetchLocations = async () => {
-    const res = await apiFetch('/master-data/locations/?is_active=true')
-    if (res?.ok) { const d = await res.json(); setLocations(Array.isArray(d) ? d : (d.results ?? [])) }
+    const res = await apiFetch('/master-data/locations/?is_active=true&root_type=factory')
+    if (res?.ok) {
+      const d = await res.json()
+      const rows = Array.isArray(d) ? d : (d.results ?? [])
+      setLocations(rows.filter(l => !['tank', 'kettle', 'assembly'].includes(l.type)))
+    }
   }
 
   const fetchAssemblyLocations = async () => {
-    const res = await apiFetch('/master-data/locations/?type=assembly&is_active=true')
+    const res = await apiFetch('/master-data/locations/?type=assembly&is_active=true&root_type=factory')
     if (res?.ok) { const d = await res.json(); setAssemblyLocations(Array.isArray(d) ? d : (d.results ?? [])) }
   }
 
@@ -126,24 +146,15 @@ export default function ConsumablesPage() {
     }
   }
 
-  const set = (f, v) => {
-    setForm(p => ({ ...p, [f]: v }))
-    if (f === 'source_location') fetchSourceStock(v)
-  }
+  const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
 
-  const openCreate = () => { setForm(emptyForm); setCreateItem({ material: '', requested_quantity: '' }); setSourceStock({}); setFormError(''); setCreateOpen(true) }
+  const openCreate = () => { setForm(emptyForm); setCreateItem({ material: '', requested_quantity: '' }); setFormError(''); setCreateOpen(true) }
 
   const addCreateRow = () => {
     const q = parseFloat(createItem.requested_quantity)
     if (!createItem.material || !q || q <= 0) return
+    if (!Number.isInteger(q)) { setFormError('Quantity must be a whole number.'); return }
     const mat = consumables.find(c => String(c.id) === String(createItem.material))
-    const avail = sourceStock[parseInt(createItem.material)] ?? 0
-    const already = form.items.filter(i => String(i.material) === String(createItem.material))
-      .reduce((s, i) => s + parseFloat(i.requested_quantity), 0)
-    if (q + already > avail) {
-      setFormError(`Only ${avail.toLocaleString()} ${mat?.unit_symbol || ''} of ${mat?.name} available at the source location.`)
-      return
-    }
     setFormError('')
     setForm(p => {
       // merge with an existing row for the same consumable
@@ -161,52 +172,25 @@ export default function ConsumablesPage() {
     setForm(p => ({ ...p, items: p.items.filter(i => String(i.material) !== String(materialId)) }))
 
   const handleCreate = async () => {
-    if (!form.source_location) { setFormError('Source location is required.'); return }
     if (form.items.length === 0) { setFormError('Add at least one consumable.'); return }
     setSubmitting(true); setFormError('')
     try {
       const res = await apiFetch('/consumables/requests/', {
         method: 'POST',
         body: JSON.stringify({
-          source_location: parseInt(form.source_location),
           assembly_reference: form.assembly_reference,
           notes: form.notes,
           items: form.items.map(i => ({ material: i.material, requested_quantity: i.requested_quantity })),
         }),
       })
-      if (res?.ok) { const data = await res.json(); setCreateOpen(false); fetchRequests(); openDetail(data) }
+      if (res?.ok) { const data = await res.json(); setCreateOpen(false); fetchRequests(); fetchStats(); openDetail(data) }
       else setFormError(await getApiError(res))
     } catch { setFormError('Connection error') }
     finally { setSubmitting(false) }
   }
 
   const openDetail = (req) => { setDetail(req); setActionError('') }
-  const refreshDetail = (data) => { setDetail(data); fetchRequests() }
-
-  const handleAddItem = async () => {
-    const q = parseFloat(newItem.requested_quantity)
-    if (!newItem.material || !q || q <= 0) return
-    setActionLoading('add-item')
-    try {
-      const res = await apiFetch(`/consumables/requests/${detail.id}/add-items/`, {
-        method: 'POST',
-        body: JSON.stringify({ items: [{ material: parseInt(newItem.material), requested_quantity: q }] }),
-      })
-      if (res?.ok) { setDetail(await res.json()); setNewItem({ material: '', requested_quantity: '' }) }
-      else setActionError(await getApiError(res))
-    } catch { setActionError('Failed to add item') }
-    finally { setActionLoading(null) }
-  }
-
-  const handleRemoveItem = async (itemId) => {
-    setActionLoading(`item-${itemId}`)
-    try {
-      const res = await apiFetch(`/consumables/requests/${detail.id}/remove-item/${itemId}/`, { method: 'DELETE' })
-      if (res?.ok) setDetail(await res.json())
-      else setActionError(await getApiError(res))
-    } catch { setActionError('Failed to remove item') }
-    finally { setActionLoading(null) }
-  }
+  const refreshDetail = (data) => { setDetail(data); fetchRequests(); fetchStats() }
 
   const doAction = async (endpoint, body, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return
@@ -222,16 +206,25 @@ export default function ConsumablesPage() {
     finally { setActionLoading(null) }
   }
 
-  const handleSubmit  = () => doAction('submit', null, `Submit request ${detail?.request_number}?`)
   const handleApprove = () => {
+    if (!approveSource) { setActionError('Select the source location to deduct stock from.'); return }
     const items = Object.entries(approveItems).map(([id, aq]) => ({ id: parseInt(id), approved_quantity: parseFloat(aq) || 0 }))
-    doAction('approve', { items })
+    doAction('approve', { items, source_location: parseInt(approveSource) })
   }
   const handleReject = () => {
     if (!rejectReason.trim()) { setActionError('Rejection reason is required.'); return }
     doAction('reject', { reason: rejectReason })
   }
   const handleDispatch = () => {
+    if (detail.assembly_reference) {
+      // Destination is auto-derived server-side from the linked assembly order's line.
+      if (!detail.linked_assembly_line_name) {
+        setActionError(`Linked assembly order ${detail.assembly_reference} has no assembly line set — set one before dispatching.`)
+        return
+      }
+      doAction('dispatch', null, `Dispatch consumables to ${detail.linked_assembly_line_name} (auto-detected from ${detail.assembly_reference})?`)
+      return
+    }
     if (!destination) { setActionError('Select a destination (assembly / in-use) location.'); return }
     doAction('dispatch', { destination_location: parseInt(destination) }, 'Dispatch consumables out of stock to the selected location?')
   }
@@ -242,6 +235,10 @@ export default function ConsumablesPage() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const num = (v) => v == null ? '—' : parseFloat(v).toLocaleString(undefined, { maximumFractionDigits: 4 })
+  // Consumable quantities are whole units — block decimal / exponent entry.
+  const blockDecimal = (e) => { if (['.', ',', 'e', 'E', '+', '-'].includes(e.key)) e.preventDefault() }
+  // Strictly whole numbers — strips anything that isn't a digit (paste-proof).
+  const wholeOnly = (v) => String(v).replace(/\D/g, '')
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -250,6 +247,26 @@ export default function ConsumablesPage() {
         <Topbar />
         <main className="p-6">
           <p className="text-xs text-gray-400 mb-3">Consumables / Requests</p>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+            {[
+              { key: 'submitted',  label: 'Pending Approval', value: stats.pending_approval,                                                   color: 'text-amber-600',   ring: 'ring-amber-200' },
+              { key: 'approved',   label: 'Approved',         value: stats.by_status?.approved   || 0,                                         color: 'text-blue-600',    ring: 'ring-blue-200' },
+              { key: 'dispatched', label: 'Dispatched',       value: stats.by_status?.dispatched || 0,                                         color: 'text-violet-600',  ring: 'ring-violet-200' },
+              { key: 'returned',   label: 'Completed',        value: (stats.by_status?.returned  || 0) + (stats.by_status?.consumed || 0),     color: 'text-green-600',   ring: 'ring-green-200' },
+              { key: 'rejected',   label: 'Rejected',         value: stats.by_status?.rejected   || 0,                                         color: 'text-red-500',     ring: 'ring-red-200' },
+            ].map(c => (
+              <button
+                key={c.label}
+                onClick={() => setStatusFilter(c.key)}
+                className={`text-left rounded-xl bg-white shadow-sm px-4 py-3 transition-all hover:shadow-md ${statusFilter === c.key ? `ring-2 ${c.ring}` : 'ring-1 ring-transparent'}`}
+              >
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{c.label}</p>
+                <p className={`text-2xl font-bold mt-1 ${c.color}`}>{(c.value ?? 0).toLocaleString()}</p>
+              </button>
+            ))}
+          </div>
 
           <div className="rounded-xl bg-white shadow-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
@@ -314,8 +331,8 @@ export default function ConsumablesPage() {
                     <tr><td colSpan={9} className="px-6 py-10 text-center text-gray-400 italic">No consumable requests found.</td></tr>
                   ) : requests.map((req, idx) => {
                     const sc = STATUS_CONFIG[req.status] || { label: req.status, color: 'bg-gray-100 text-gray-500' }
-                    const dispatched = ['dispatched', 'returned'].includes(req.status)
-                    const returned   = req.status === 'returned'
+                    const dispatched = ['dispatched', ...COMPLETED_STATUSES].includes(req.status)
+                    const returned   = COMPLETED_STATUSES.includes(req.status)
                     return (
                       <tr key={req.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => openDetail(req)}>
                         <td className="px-4 py-3 text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
@@ -360,13 +377,7 @@ export default function ConsumablesPage() {
             </div>
             <div className="px-6 py-5 space-y-4">
               {formError && <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{formError}</div>}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Source Location *</label>
-                <select value={form.source_location} onChange={e => set('source_location', e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none">
-                  <option value="">— Select location —</option>
-                  {locations.map(l => <option key={l.id} value={l.id}>{l.full_path || l.name}</option>)}
-                </select>
-              </div>
+              <p className="text-[10px] text-gray-400 italic">The source location — where stock is deducted from — is chosen by the approver.</p>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Assembly Reference</label>
                 <input value={form.assembly_reference} onChange={e => set('assembly_reference', e.target.value)} placeholder="e.g. assembly job / batch note" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none" />
@@ -381,16 +392,15 @@ export default function ConsumablesPage() {
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Consumables *</label>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
-                    <select value={createItem.material} onChange={e => setCreateItem(p => ({ ...p, material: e.target.value }))} disabled={!form.source_location} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
-                      <option value="">{form.source_location ? '— Select consumable —' : '— Select source location first —'}</option>
-                      {consumables.map(c => {
-                        const avail = sourceStock[c.id] ?? 0
-                        return <option key={c.id} value={c.id} disabled={avail <= 0}>{c.name}{c.unit_symbol ? ` (${c.unit_symbol})` : ''} — {avail.toLocaleString()} available</option>
-                      })}
+                    <select value={createItem.material} onChange={e => setCreateItem(p => ({ ...p, material: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none">
+                      <option value="">— Select consumable —</option>
+                      {consumables.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}{c.unit_symbol ? ` (${c.unit_symbol})` : ''}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="w-24">
-                    <input type="number" min="0" step="any" value={createItem.requested_quantity} onChange={e => setCreateItem(p => ({ ...p, requested_quantity: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCreateRow() } }} placeholder="Qty" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-right focus:border-orange-500 outline-none" />
+                    <input type="number" min="0" step="1" value={createItem.requested_quantity} onChange={e => setCreateItem(p => ({ ...p, requested_quantity: wholeOnly(e.target.value) }))} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCreateRow() } else { blockDecimal(e) } }} placeholder="Qty" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-right focus:border-orange-500 outline-none" />
                   </div>
                   <button type="button" onClick={addCreateRow} disabled={!createItem.material || !createItem.requested_quantity} className="rounded-lg bg-orange-500 px-3 py-2 text-xs font-bold text-white hover:bg-orange-600 disabled:opacity-40">+ Add</button>
                 </div>
@@ -443,30 +453,12 @@ export default function ConsumablesPage() {
             <div className="flex-1 overflow-y-auto">
               {/* Info row */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 px-6 py-4 bg-gray-50/40 border-b border-gray-100 text-xs">
-                <div><p className="text-[9px] font-bold text-gray-400 uppercase">Source</p><p className="text-gray-700 mt-0.5">{detail.source_location_name}</p></div>
+                <div><p className="text-[9px] font-bold text-gray-400 uppercase">Source</p><p className="text-gray-700 mt-0.5">{detail.source_location_name || (detail.status === 'submitted' ? 'Set on approval' : '—')}</p></div>
                 <div><p className="text-[9px] font-bold text-gray-400 uppercase">Destination</p><p className="text-gray-700 mt-0.5">{detail.destination_location_name || '—'}</p></div>
                 <div><p className="text-[9px] font-bold text-gray-400 uppercase">Created by</p><p className="text-gray-700 mt-0.5">{detail.created_by_name || '—'}</p></div>
                 {detail.notes && <div className="col-span-full"><p className="text-[9px] font-bold text-gray-400 uppercase">Notes</p><p className="text-gray-700 mt-0.5">{detail.notes}</p></div>}
                 {detail.rejection_reason && <div className="col-span-full rounded-lg border border-red-100 bg-red-50 px-3 py-2"><p className="text-[9px] font-bold text-red-400 uppercase">Rejection Reason</p><p className="text-red-600 italic mt-0.5">{detail.rejection_reason}</p></div>}
               </div>
-
-              {/* Add item (draft only) */}
-              {detail.status === 'draft' && canWrite && (
-                <div className="flex items-end gap-2 px-6 py-3 border-b border-gray-100">
-                  <div className="flex-1">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Consumable</label>
-                    <select value={newItem.material} onChange={e => setNewItem(p => ({ ...p, material: e.target.value }))} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none">
-                      <option value="">— Select consumable —</option>
-                      {consumables.map(c => <option key={c.id} value={c.id}>{c.name}{c.unit_symbol ? ` (${c.unit_symbol})` : ''}</option>)}
-                    </select>
-                  </div>
-                  <div className="w-28">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Quantity</label>
-                    <input type="number" min="0" step="any" value={newItem.requested_quantity} onChange={e => setNewItem(p => ({ ...p, requested_quantity: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') handleAddItem() }} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-right focus:border-orange-500 outline-none" />
-                  </div>
-                  <button onClick={handleAddItem} disabled={!newItem.material || !newItem.requested_quantity || actionLoading === 'add-item'} className="rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white hover:bg-orange-600 disabled:opacity-40">+ Add</button>
-                </div>
-              )}
 
               {/* Items table */}
               <div className="px-6 py-3">
@@ -479,7 +471,6 @@ export default function ConsumablesPage() {
                       <th className="py-2 text-right">Dispatched</th>
                       <th className="py-2 text-right">Used</th>
                       <th className="py-2 text-right">Returned</th>
-                      {detail.status === 'draft' && canWrite && <th className="py-2 w-8"></th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -491,36 +482,76 @@ export default function ConsumablesPage() {
                         <td className="py-2 text-right text-gray-700">{num(item.requested_quantity)}</td>
                         <td className="py-2 text-right">
                           {detail.status === 'submitted' && canWrite ? (
-                            <input type="number" min="0" step="any" value={approveItems[item.id] ?? ''} onChange={e => setApproveItems(p => ({ ...p, [item.id]: e.target.value }))} className="w-20 rounded-lg border border-blue-200 px-2 py-1 text-xs text-right focus:border-blue-400 focus:outline-none" />
+                            <input type="number" min="0" step="1" value={approveItems[item.id] ?? ''} onKeyDown={blockDecimal} onChange={e => setApproveItems(p => ({ ...p, [item.id]: wholeOnly(e.target.value) }))} className="w-20 rounded-lg border border-blue-200 px-2 py-1 text-xs text-right focus:border-blue-400 focus:outline-none" />
                           ) : <span className="text-blue-700 font-semibold">{num(item.approved_quantity)}</span>}
                         </td>
                         <td className="py-2 text-right text-violet-700 font-semibold">{num(item.dispatched_quantity)}</td>
                         <td className="py-2 text-right">
                           {detail.status === 'dispatched' && canWrite ? (
-                            <input type="number" min="0" step="any" value={usedItems[item.id] ?? ''} onChange={e => setUsedItems(p => ({ ...p, [item.id]: e.target.value }))} className="w-20 rounded-lg border border-amber-200 px-2 py-1 text-xs text-right focus:border-amber-400 focus:outline-none" />
+                            <input type="number" min="0" step="1" value={usedItems[item.id] ?? ''} onKeyDown={blockDecimal} onChange={e => setUsedItems(p => ({ ...p, [item.id]: wholeOnly(e.target.value) }))} className="w-20 rounded-lg border border-amber-200 px-2 py-1 text-xs text-right focus:border-amber-400 focus:outline-none" />
                           ) : <span className="text-gray-700">{num(item.used_quantity)}</span>}
                         </td>
                         <td className="py-2 text-right text-green-700 font-semibold">{num(item.returned_quantity)}</td>
-                        {detail.status === 'draft' && canWrite && (
-                          <td className="py-2 text-right">
-                            <button onClick={() => handleRemoveItem(item.id)} disabled={actionLoading === `item-${item.id}`} className="text-red-300 hover:text-red-500 disabled:opacity-30 text-lg leading-none">×</button>
-                          </td>
-                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Dispatch destination picker */}
+              {/* Source location — the approver decides where stock is deducted from */}
+              {detail.status === 'submitted' && canWrite && (
+                <div className="px-6 py-3 border-t border-gray-100">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Deduct stock from (source location) *</label>
+                  <select
+                    value={approveSource}
+                    onChange={e => { setApproveSource(e.target.value); fetchSourceStock(e.target.value) }}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 outline-none"
+                  >
+                    <option value="">— Select source location —</option>
+                    {locations.map(l => <option key={l.id} value={l.id}>{l.full_path || l.name}</option>)}
+                  </select>
+                  {approveSource && (
+                    <div className="mt-2 space-y-0.5">
+                      {detail.items?.map(item => {
+                        const avail = sourceStock[item.material] ?? 0
+                        const want  = parseFloat(approveItems[item.id] ?? item.requested_quantity) || 0
+                        const short = avail < want
+                        return (
+                          <div key={item.id} className="flex items-center justify-between text-[10px]">
+                            <span className="text-gray-500">{item.material_name}</span>
+                            <span className={short ? 'text-red-600 font-semibold' : 'text-gray-500'}>
+                              {avail.toLocaleString()} {item.unit_symbol} available{short ? ` — short of ${want.toLocaleString()}` : ''}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Dispatch destination — auto-detected when linked to an assembly order, manual otherwise */}
               {detail.status === 'approved' && canWrite && (
                 <div className="px-6 py-3 border-t border-gray-100">
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Dispatch to (assembly zone) *</label>
-                  <select value={destination} onChange={e => setDestination(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none">
-                    <option value="">— Select assembly zone —</option>
-                    {assemblyLocations.filter(l => String(l.id) !== String(detail.source_location)).map(l => <option key={l.id} value={l.id}>{l.full_path || l.name}</option>)}
-                  </select>
-                  {assemblyLocations.length === 0 && <p className="text-[10px] text-amber-600 mt-1">No assembly locations found. Create one under Master Data → Locations (type: Assembly).</p>}
+                  {detail.assembly_reference ? (
+                    <>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Dispatch to (auto-detected)</label>
+                      {detail.linked_assembly_line_name ? (
+                        <p className="text-sm font-semibold text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">{detail.linked_assembly_line_name}</p>
+                      ) : (
+                        <p className="text-[10px] text-amber-600">Linked assembly order {detail.assembly_reference} has no assembly line set — set one before dispatching.</p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Dispatch to (assembly zone) *</label>
+                      <select value={destination} onChange={e => setDestination(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none">
+                        <option value="">— Select assembly zone —</option>
+                        {assemblyLocations.filter(l => String(l.id) !== String(detail.source_location)).map(l => <option key={l.id} value={l.id}>{l.full_path || l.name}</option>)}
+                      </select>
+                      {assemblyLocations.length === 0 && <p className="text-[10px] text-amber-600 mt-1">No assembly locations found. Create one under Master Data → Locations (type: Assembly).</p>}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -534,11 +565,8 @@ export default function ConsumablesPage() {
             </div>
 
             {/* Action bar */}
-            {canWrite && !['returned', 'rejected'].includes(detail.status) && (
+            {canWrite && !['rejected', ...COMPLETED_STATUSES].includes(detail.status) && (
               <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
-                {detail.status === 'draft' && (
-                  <button onClick={handleSubmit} disabled={detail.total_items === 0 || actionLoading} className="rounded-lg bg-amber-500 px-5 py-2 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-50">Submit</button>
-                )}
                 {detail.status === 'submitted' && (
                   <>
                     {!showReject ? (
@@ -550,7 +578,14 @@ export default function ConsumablesPage() {
                   </>
                 )}
                 {detail.status === 'approved' && (
-                  <button onClick={handleDispatch} disabled={actionLoading} className="rounded-lg bg-violet-500 px-5 py-2 text-xs font-bold text-white hover:bg-violet-600 disabled:opacity-50">Dispatch</button>
+                  <>
+                    {!showReject ? (
+                      <button onClick={() => setShowReject(true)} disabled={actionLoading} title="Abandon this request — e.g. if it can't be dispatched (wrong source location, etc.)" className="rounded-lg border border-red-200 px-5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-50">Cancel</button>
+                    ) : (
+                      <button onClick={handleReject} disabled={actionLoading} className="rounded-lg bg-red-500 px-5 py-2 text-xs font-bold text-white hover:bg-red-600 disabled:opacity-50">Confirm Cancel</button>
+                    )}
+                    <button onClick={handleDispatch} disabled={actionLoading} className="rounded-lg bg-violet-500 px-5 py-2 text-xs font-bold text-white hover:bg-violet-600 disabled:opacity-50">Dispatch</button>
+                  </>
                 )}
                 {detail.status === 'dispatched' && (
                   <button onClick={handleRecordReturn} disabled={actionLoading} className="rounded-lg bg-green-500 px-5 py-2 text-xs font-bold text-white hover:bg-green-600 disabled:opacity-50">Record Return</button>

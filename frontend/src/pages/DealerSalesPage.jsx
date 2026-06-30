@@ -25,21 +25,22 @@ export default function DealerSalesPage() {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError]   = useState('')
 
-  const [detailSale, setDetailSale]     = useState(null)
-  const [actionLoading, setActionLoading] = useState(null)
-  const [actionError, setActionError]   = useState('')
+  // One-step create: items built locally before the sale is created
+  const [saleItems, setSaleItems]   = useState([])
 
-  // QR / variant scan state inside drawer
-  const [qrInput, setQrInput]       = useState('')
-  const [qrLoading, setQrLoading]   = useState(false)
-  const [qrResult, setQrResult]     = useState(null)
-  const [qrError, setQrError]       = useState('')
-  const [qrQty, setQrQty]           = useState('1')
-  const qrInputRef                  = useRef(null)
+  // LPN / Pallet scan state (inside create modal)
+  const [scanInput, setScanInput]   = useState('')
+  const [scanLoading, setScanLoading] = useState(false)
+  const [scanError, setScanError]   = useState('')
+  const scanInputRef                = useRef(null)
 
   // manual add state
   const [addVariant, setAddVariant] = useState('')
   const [addQty, setAddQty]         = useState('')
+
+  const [detailSale, setDetailSale]     = useState(null)
+  const [actionLoading, setActionLoading] = useState(null)
+  const [actionError, setActionError]   = useState('')
 
   useEffect(() => { fetchSales() }, [search, custFilter, confirmedFilter])
   useEffect(() => { fetchCustomers(); fetchVariants() }, [])
@@ -64,34 +65,91 @@ export default function DealerSalesPage() {
   }
 
   const fetchVariants = async () => {
-    const res = await apiFetch('/master-data/finished-product-variants/?is_available=true')
+    const res = await apiFetch('/dispatch/catalog/variants/')
     if (res?.ok) { const d = await res.json(); setVariants(Array.isArray(d) ? d : (d.results ?? [])) }
-  }
-
-  const refreshDetail = async (id) => {
-    const res = await apiFetch(`/dispatch/dealer-sales/${id}/`)
-    if (res?.ok) { const d = await res.json(); setDetailSale(d) }
   }
 
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
 
   const openCreate = () => {
     setForm({ ...emptyForm, sale_date: new Date().toISOString().slice(0, 10) })
+    setSaleItems([]); setScanInput(''); setScanError('')
+    setAddVariant(''); setAddQty('')
     setFormError(''); setCreateOpen(true)
+    setTimeout(() => scanInputRef.current?.focus(), 50)
   }
 
-  const handleCreate = async () => {
-    if (!form.customer)   { setFormError('Customer is required.'); return }
-    if (!form.sale_date)  { setFormError('Sale date is required.'); return }
-    setSubmitting(true); setFormError('')
-    const payload = {
-      customer:   parseInt(form.customer),
-      buyer_name: form.buyer_name,
-      sale_date:  form.sale_date,
-      notes:      form.notes,
-    }
+  // ── Local item management ─────────────────────────────────────────────────────
+
+  const addItem = (meta, qty) => {
+    const q = parseFloat(qty)
+    if (!meta || !q || q <= 0) return
+    setSaleItems(prev => {
+      const idx = prev.findIndex(i => i.variant_id === meta.variant_id)
+      if (idx >= 0) {
+        const copy = [...prev]
+        copy[idx] = { ...copy[idx], quantity: copy[idx].quantity + q }
+        return copy
+      }
+      return [...prev, { ...meta, quantity: q }]
+    })
+  }
+
+  const updateQty = (variantId, qty) => {
+    setSaleItems(prev => prev.map(i => i.variant_id === variantId ? { ...i, quantity: qty } : i))
+  }
+
+  const removeItem = (variantId) => {
+    setSaleItems(prev => prev.filter(i => i.variant_id !== variantId))
+  }
+
+  // ── LPN / Pallet scan ──────────────────────────────────────────────────────────
+
+  const handleScan = async () => {
+    const code = scanInput.trim()
+    if (!code) return
+    setScanLoading(true); setScanError('')
     try {
-      const res = await apiFetch('/dispatch/dealer-sales/', { method: 'POST', body: JSON.stringify(payload) })
+      const res = await apiFetch(`/dispatch/dealer-sales/scan/?code=${encodeURIComponent(code)}`)
+      if (res?.ok) {
+        const data = await res.json()
+        ;(data.items || []).forEach(it => addItem(
+          { variant_id: it.variant_id, variant_label: it.variant_label, sku_code: it.sku_code },
+          1,
+        ))
+        setScanInput('')
+        setTimeout(() => scanInputRef.current?.focus(), 50)
+      } else setScanError(await getApiError(res))
+    } catch { setScanError('Connection error') }
+    finally { setScanLoading(false) }
+  }
+
+  const handleManualAdd = () => {
+    if (!addVariant || !addQty) return
+    const v = variants.find(x => x.id === parseInt(addVariant))
+    if (!v) return
+    addItem({ variant_id: v.id, variant_label: v.display_label || v.sku_code, sku_code: v.sku_code }, addQty)
+    setAddVariant(''); setAddQty('')
+  }
+
+  // ── Create (one step) ────────────────────────────────────────────────────────
+
+  const handleCreate = async () => {
+    if (!form.customer)  { setFormError('Dealer is required.'); return }
+    if (!form.sale_date) { setFormError('Sale date is required.'); return }
+    if (saleItems.length === 0) { setFormError('Add at least one item.'); return }
+    setSubmitting(true); setFormError('')
+    try {
+      const res = await apiFetch('/dispatch/dealer-sales/', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer:   parseInt(form.customer),
+          buyer_name: form.buyer_name,
+          sale_date:  form.sale_date,
+          notes:      form.notes,
+          items: saleItems.map(i => ({ finished_product_variant: i.variant_id, quantity: parseFloat(i.quantity) })),
+        }),
+      })
       if (res?.ok) {
         const data = await res.json()
         setCreateOpen(false); fetchSales()
@@ -99,66 +157,6 @@ export default function DealerSalesPage() {
       } else setFormError(await getApiError(res))
     } catch { setFormError('Connection error') }
     finally { setSubmitting(false) }
-  }
-
-  // ── QR scan (inside drawer) ──────────────────────────────────────────────────
-
-  const handleQrScan = async () => {
-    const code = qrInput.trim()
-    if (!code) return
-    setQrLoading(true); setQrError(''); setQrResult(null)
-    try {
-      const res = await apiFetch(`/dispatch/dealer-orders/scan-qr/?qr=${encodeURIComponent(code)}`)
-      if (res?.ok) { setQrResult(await res.json()) }
-      else { setQrError(await getApiError(res)) }
-    } catch { setQrError('Connection error') }
-    finally { setQrLoading(false) }
-  }
-
-  const handleQrAdd = async () => {
-    if (!qrResult || !detailSale) return
-    const qty = parseFloat(qrQty)
-    if (!qty || qty <= 0) { setQrError('Quantity must be greater than 0.'); return }
-    setActionLoading('qr-add')
-    try {
-      const res = await apiFetch(`/dispatch/dealer-sales/${detailSale.id}/add-items/`, {
-        method: 'POST',
-        body: JSON.stringify({ items: [{ finished_product_variant: qrResult.variant_id, quantity: qty }] }),
-      })
-      if (res?.ok) {
-        setDetailSale(await res.json())
-        setQrResult(null); setQrInput(''); setQrError(''); setQrQty('1')
-        setTimeout(() => qrInputRef.current?.focus(), 50)
-      } else setQrError(await getApiError(res))
-    } catch { setQrError('Failed to add item') }
-    finally { setActionLoading(null) }
-  }
-
-  const handleManualAdd = async () => {
-    if (!addVariant || !addQty) return
-    const qty = parseFloat(addQty)
-    if (!qty || qty <= 0) return
-    setActionLoading('manual-add')
-    try {
-      const res = await apiFetch(`/dispatch/dealer-sales/${detailSale.id}/add-items/`, {
-        method: 'POST',
-        body: JSON.stringify({ items: [{ finished_product_variant: parseInt(addVariant), quantity: qty }] }),
-      })
-      if (res?.ok) { setDetailSale(await res.json()); setAddVariant(''); setAddQty('') }
-      else setActionError(await getApiError(res))
-    } catch { setActionError('Failed to add item') }
-    finally { setActionLoading(null) }
-  }
-
-  const handleRemoveItem = async (itemId) => {
-    if (!detailSale) return
-    setActionLoading(`item-${itemId}`)
-    try {
-      const res = await apiFetch(`/dispatch/dealer-sales/${detailSale.id}/remove-item/${itemId}/`, { method: 'DELETE' })
-      if (res?.ok) { setDetailSale(await res.json()) }
-      else setActionError(await getApiError(res))
-    } catch { setActionError('Failed to remove item') }
-    finally { setActionLoading(null) }
   }
 
   const handleConfirm = async () => {
@@ -194,9 +192,10 @@ export default function DealerSalesPage() {
 
   const openDetail = (sale) => {
     setDetailSale(sale)
-    setQrResult(null); setQrInput(''); setQrError(''); setQrQty('1')
-    setActionError(''); setAddVariant(''); setAddQty('')
+    setActionError('')
   }
+
+  const totalItems = saleItems.length
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -300,19 +299,20 @@ export default function DealerSalesPage() {
         </main>
       </div>
 
-      {/* ── Create Modal ─────────────────────────────────────────────────────────── */}
+      {/* ── Create Modal — one step: scan LPN/Pallet + create ─────────────────── */}
       {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h3 className="text-base font-semibold text-gray-900">New Dealer Sale</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">Add sale items after creating</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Scan LPN / Pallet to add items, then create. Confirm later to deduct stock.</p>
               </div>
               <button onClick={() => setCreateOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <div className="px-6 py-5 space-y-4">
               {formError && <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{formError}</div>}
+
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Dealer *</label>
                 <select value={form.customer} onChange={e => set('customer', e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none">
@@ -334,18 +334,86 @@ export default function DealerSalesPage() {
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Notes</label>
                 <textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes…" className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none resize-none" />
               </div>
+
+              {/* Scan LPN / Pallet */}
+              <div className="space-y-3 pt-1 border-t border-gray-100">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-3">Scan LPN / Pallet</p>
+                <div className="flex gap-2">
+                  <input
+                    ref={scanInputRef}
+                    value={scanInput}
+                    onChange={e => setScanInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleScan() }}
+                    placeholder="Scan LPN or Pallet code, press Enter…"
+                    className="flex-1 px-3 py-2.5 rounded-lg border-2 border-orange-300 bg-orange-50/30 text-sm font-mono focus:border-orange-500 focus:outline-none"
+                    autoFocus
+                  />
+                  <button onClick={handleScan} disabled={scanLoading || !scanInput.trim()} className="px-4 rounded-lg bg-orange-500 text-white text-xs font-bold hover:bg-orange-600 disabled:opacity-50">
+                    {scanLoading ? '…' : 'Scan'}
+                  </button>
+                </div>
+                {scanError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{scanError}</div>}
+
+                {/* Manual add */}
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Or Add Manually</p>
+                  <div className="flex gap-2">
+                    <select value={addVariant} onChange={e => setAddVariant(e.target.value)} className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-orange-500 outline-none">
+                      <option value="">— Select product variant —</option>
+                      {variants.map(v => <option key={v.id} value={v.id}>{v.sku_code} — {v.display_label || v.sku_code}</option>)}
+                    </select>
+                    <input type="number" min="0.01" step="0.01" value={addQty} onChange={e => setAddQty(e.target.value)} placeholder="Qty" className="w-24 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none" />
+                    <button onClick={handleManualAdd} disabled={!addVariant || !addQty} className="px-4 rounded-lg bg-slate-600 text-white text-xs font-bold hover:bg-slate-700 disabled:opacity-50">
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Items list */}
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Items ({totalItems})</p>
+                {saleItems.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-xs text-gray-400 italic">
+                    No items yet — scan an LPN/Pallet above or add manually.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {saleItems.map(item => (
+                      <div key={item.variant_id} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold text-gray-800 truncate">{item.variant_label}</div>
+                            <span className="font-mono text-[9px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">{item.sku_code}</span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <input
+                              type="number" min="0.01" step="0.01"
+                              value={item.quantity}
+                              onChange={e => updateQty(item.variant_id, e.target.value)}
+                              className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-sm text-right focus:border-orange-400 focus:outline-none"
+                            />
+                            <button onClick={() => removeItem(item.variant_id)} className="text-red-400 hover:text-red-600 text-sm" title="Remove">×</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-slate-50/30">
               <button onClick={() => setCreateOpen(false)} className="rounded-lg border border-gray-200 px-6 py-2 text-sm font-bold text-slate-500 hover:bg-white">Cancel</button>
-              <button onClick={handleCreate} disabled={submitting} className="rounded-lg bg-orange-500 px-8 py-2 text-sm font-bold text-white shadow-lg shadow-orange-200 hover:bg-orange-600 disabled:opacity-50 transition-all">
-                {submitting ? 'Creating…' : 'Create Sale'}
+              <button onClick={handleCreate} disabled={submitting || saleItems.length === 0} className="rounded-lg bg-orange-500 px-8 py-2 text-sm font-bold text-white shadow-lg shadow-orange-200 hover:bg-orange-600 disabled:opacity-50 transition-all">
+                {submitting ? 'Creating…' : `Create Sale${totalItems > 0 ? ` (${totalItems} items)` : ''}`}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Detail Drawer ─────────────────────────────────────────────────────────── */}
+      {/* ── Detail Drawer — view + confirm ────────────────────────────────────── */}
       {detailSale && (
         <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/40" onClick={() => setDetailSale(null)}>
           <div className="bg-white h-full w-full max-w-2xl shadow-2xl overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -375,70 +443,12 @@ export default function DealerSalesPage() {
                 {detailSale.created_by_name && <Row label="Created by" value={detailSale.created_by_name} />}
               </div>
 
-              {/* QR scan — pending only */}
-              {!detailSale.is_confirmed && (
-                <div className="space-y-3">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Scan QR Code</p>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        ref={qrInputRef}
-                        value={qrInput}
-                        onChange={e => setQrInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') handleQrScan() }}
-                        placeholder="Scan QR or type SKU, press Enter…"
-                        className="w-full px-3 py-2.5 rounded-lg border-2 border-orange-300 bg-orange-50/30 text-sm font-mono focus:border-orange-500 focus:outline-none"
-                        autoFocus
-                      />
-                    </div>
-                    <button onClick={handleQrScan} disabled={qrLoading || !qrInput.trim()} className="px-4 rounded-lg bg-orange-500 text-white text-xs font-bold hover:bg-orange-600 disabled:opacity-50">
-                      {qrLoading ? '…' : 'Scan'}
-                    </button>
-                  </div>
-                  {qrError && <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{qrError}</div>}
-                  {qrResult && (
-                    <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3">
-                      <p className="text-[10px] font-bold text-teal-700 uppercase tracking-wide mb-1">Found: {qrResult.variant_label}</p>
-                      <p className="text-[9px] text-gray-500 mb-2">SKU: {qrResult.sku_code}</p>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="number" min="0.01" step="0.01"
-                          value={qrQty}
-                          onChange={e => setQrQty(e.target.value)}
-                          className="w-28 rounded-lg border border-teal-200 px-3 py-1.5 text-sm focus:border-teal-500 focus:outline-none"
-                          placeholder="Qty"
-                        />
-                        <button onClick={handleQrAdd} disabled={actionLoading === 'qr-add'} className="flex-1 rounded-lg bg-teal-500 py-1.5 text-xs font-bold text-white hover:bg-teal-600 disabled:opacity-50">
-                          {actionLoading === 'qr-add' ? 'Adding…' : 'Add Item'}
-                        </button>
-                        <button onClick={() => { setQrResult(null); setQrInput(''); qrInputRef.current?.focus() }} className="text-gray-400 hover:text-gray-600 text-sm">×</button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Manual add */}
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Or Add Manually</p>
-                    <div className="flex gap-2">
-                      <select value={addVariant} onChange={e => setAddVariant(e.target.value)} className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-orange-500 outline-none">
-                        <option value="">— Select product variant —</option>
-                        {variants.map(v => <option key={v.id} value={v.id}>{v.sku_code} — {v.variant_label || v.sku_code}</option>)}
-                      </select>
-                      <input type="number" min="0.01" step="0.01" value={addQty} onChange={e => setAddQty(e.target.value)} placeholder="Qty" className="w-24 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-500 outline-none" />
-                      <button onClick={handleManualAdd} disabled={!addVariant || !addQty || actionLoading === 'manual-add'} className="px-4 rounded-lg bg-slate-600 text-white text-xs font-bold hover:bg-slate-700 disabled:opacity-50">
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Items list */}
               <div>
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Items ({detailSale.total_items})</p>
                 {detailSale.items?.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-xs text-gray-400 italic">
-                    {!detailSale.is_confirmed ? 'No items yet — scan a QR code above or add manually.' : 'No items recorded.'}
+                    No items recorded.
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -454,9 +464,6 @@ export default function DealerSalesPage() {
                               <div className="text-[9px] text-gray-400 uppercase font-semibold">Qty</div>
                               <div className="text-xs font-bold text-gray-700">{parseFloat(item.quantity).toLocaleString()}</div>
                             </div>
-                            {!detailSale.is_confirmed && (
-                              <button onClick={() => handleRemoveItem(item.id)} disabled={actionLoading === `item-${item.id}`} className="text-red-400 hover:text-red-600 text-sm disabled:opacity-30" title="Remove">×</button>
-                            )}
                           </div>
                         </div>
                       </div>

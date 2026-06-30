@@ -386,7 +386,7 @@ const FinishedProductsPage = () => {
     setBomVariant(variant); setBomLines([]); setBomError(''); setNewBomMaterial(''); setNewBomQty('')
     const [bomRes, consumRes] = await Promise.all([
       apiFetch(`/assembly/bom/?finished_product_variant=${variant.id}`),
-      apiFetch('/master-data/raw-materials/?type=consumable'),
+      apiFetch('/master-data/raw-materials-and-consumables/?type=consumable'),
     ])
     if (bomRes?.ok) { const d = await bomRes.json(); setBomLines(Array.isArray(d) ? d : (d.results ?? [])) }
     if (consumRes?.ok) { const d = await consumRes.json(); setBomConsumables(Array.isArray(d) ? d : (d.results ?? [])) }
@@ -973,7 +973,7 @@ const FinishedProductsPage = () => {
           <div className="w-full max-w-md rounded-xl bg-white shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">Packaging BOM</h3>
+                <h3 className="text-base font-semibold text-gray-900">Stickers &amp; Caps Requirement</h3>
                 <p className="text-[10px] text-gray-400 mt-0.5">{bomVariant.volume}{bomVariant.volume_unit_symbol} {bomVariant.unit_name} — materials per unit</p>
               </div>
               <button onClick={() => setBomVariant(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>

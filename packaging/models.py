@@ -79,7 +79,6 @@ class PackagingOrder(models.Model):
         return f"{prefix}{seq:04d}"
 
     @transaction.atomic
-    @transaction.atomic
     def label(self, performed_by=None):
         """Label step: confirm sticker, print LPN, mark completed."""
         if self.status != 'in_progress':

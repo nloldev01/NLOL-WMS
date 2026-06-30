@@ -57,7 +57,8 @@ def _draw_down(material, location, quantity, *, movement_type, counterpart_locat
 # Consumable Request — standalone request → approve → dispatch → use → return
 #
 # Lifecycle:
-#   draft → submitted → approved / rejected → dispatched → returned
+#   draft → submitted → approved / rejected → dispatched → returned / consumed
+#   ('consumed' = everything dispatched was used, nothing returned to source.)
 #
 # Stock model ("dispatch out, return unused"):
 #   - On dispatch, the full approved quantity is transferred out of the source
@@ -76,13 +77,20 @@ class ConsumableRequest(models.Model):
         ('rejected',   'Rejected'),
         ('dispatched', 'Dispatched'),
         ('returned',   'Returned'),
+        ('consumed',   'Consumed'),
     ]
+
+    # Terminal states reached after a return is recorded. 'returned' means some
+    # unused stock came back to the source; 'consumed' means everything dispatched
+    # was used and nothing was returned.
+    COMPLETED_STATUSES = ('returned', 'consumed')
 
     request_number = models.CharField(max_length=50, unique=True)
     status         = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
 
     source_location = models.ForeignKey(
         'master_data.Location', on_delete=models.PROTECT,
+        null=True, blank=True,
         related_name='consumable_requests_source',
     )
     destination_location = models.ForeignKey(
@@ -137,9 +145,17 @@ class ConsumableRequest(models.Model):
         self.save()
 
     @transaction.atomic
-    def approve(self, performed_by=None, item_quantities=None):
+    def approve(self, performed_by=None, item_quantities=None, source_location=None):
         if self.status != 'submitted':
             raise ValidationError("Only submitted requests can be approved.")
+
+        # The source location (where stock is deducted from) is the approver's
+        # decision — requesters don't set it. Accept one here, and require that a
+        # source ends up set before the request can be approved.
+        if source_location is not None:
+            self.source_location = source_location
+        if self.source_location is None:
+            raise ValidationError("A source location is required to approve this request.")
 
         # item_quantities: optional {item_id: approved_quantity}
         item_quantities = item_quantities or {}
@@ -153,6 +169,8 @@ class ConsumableRequest(models.Model):
                 aq = item.requested_quantity
             if aq < 0:
                 raise ValidationError("Approved quantity cannot be negative.")
+            if aq != aq.to_integral_value():
+                raise ValidationError("Approved quantity must be a whole number.")
             item.approved_quantity = aq
             item.save(update_fields=['approved_quantity'])
             if aq > 0:
@@ -168,8 +186,11 @@ class ConsumableRequest(models.Model):
 
     @transaction.atomic
     def reject(self, reason='', performed_by=None):
-        if self.status != 'submitted':
-            raise ValidationError("Only submitted requests can be rejected.")
+        # Approved requests haven't moved any stock yet (dispatch is what draws
+        # it down), so they can still be rejected/abandoned if they turn out to
+        # be undispatchable (e.g. wrong source location) — same as a submitted one.
+        if self.status not in ('submitted', 'approved'):
+            raise ValidationError("Only submitted or approved requests can be rejected.")
         self.status = 'rejected'
         self.rejection_reason = reason
         self.save()
@@ -182,6 +203,8 @@ class ConsumableRequest(models.Model):
             raise ValidationError("A destination assembly location is required to dispatch.")
         if destination_location.type != 'assembly':
             raise ValidationError("Consumables can only be dispatched to an assembly location.")
+        if self.source_location is None:
+            raise ValidationError("This request has no source location set — approve it with a source first.")
         if destination_location == self.source_location:
             raise ValidationError("Destination location must differ from the source location.")
 
@@ -223,6 +246,7 @@ class ConsumableRequest(models.Model):
             raise ValidationError("Only dispatched requests can be returned.")
 
         used_quantities = used_quantities or {}
+        total_returned = Decimal('0')
 
         for item in self.items.select_related('material').all():
             dispatched = item.dispatched_quantity or Decimal('0')
@@ -241,6 +265,8 @@ class ConsumableRequest(models.Model):
 
             if used < 0:
                 raise ValidationError(f"Used quantity for {item.material.name} cannot be negative.")
+            if used != used.to_integral_value():
+                raise ValidationError(f"Used quantity for {item.material.name} must be a whole number.")
             if used > dispatched:
                 raise ValidationError(
                     f"Used quantity ({used}) for {item.material.name} cannot exceed "
@@ -276,7 +302,10 @@ class ConsumableRequest(models.Model):
             item.returned_quantity = returned
             item.save(update_fields=['used_quantity', 'returned_quantity'])
 
-        self.status = 'returned'
+            total_returned += returned
+
+        # If nothing came back to the source, the request was fully consumed.
+        self.status = 'returned' if total_returned > 0 else 'consumed'
         self.returned_by = performed_by
         self.returned_at = timezone.now()
         self.save()

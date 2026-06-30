@@ -96,6 +96,32 @@ class LocationViewSet(viewsets.ModelViewSet):
     search_fields    = ['name', 'short_code']
     ordering_fields  = ['name', 'short_code', 'type']
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # ?root_type=factory — keep only locations whose top-level ancestor is of
+        # the given type. Resolved in Python because the parent chain has variable
+        # depth and can't be expressed as a single ORM filter.
+        root_type = self.request.query_params.get('root_type')
+        if root_type:
+            nodes = {
+                l.id: l
+                for l in Location.objects.only('id', 'parent_id', 'type')
+            }
+
+            def root_type_of(loc):
+                seen = set()
+                while loc.parent_id and loc.parent_id not in seen:
+                    seen.add(loc.id)
+                    parent = nodes.get(loc.parent_id)
+                    if parent is None:
+                        break
+                    loc = parent
+                return loc.type
+
+            matching_ids = [lid for lid, loc in nodes.items() if root_type_of(loc) == root_type]
+            qs = qs.filter(id__in=matching_ids)
+        return qs
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         name = instance.name

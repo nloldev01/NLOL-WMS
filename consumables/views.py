@@ -1,9 +1,10 @@
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Count
 from django_filters.rest_framework import DjangoFilterBackend
 
 from accounts.permissions import ModulePermission
@@ -37,7 +38,11 @@ class ConsumableRequestViewSet(viewsets.ModelViewSet):
         return Response(ConsumableRequestSerializer(obj, context={'request': request}).data)
 
     def create(self, request, *args, **kwargs):
-        """Create a request together with its line items in a single step."""
+        """Create a request together with its line items and submit it in one step.
+
+        There is no separate draft stage — a request is born 'submitted' and goes
+        straight into the approval queue.
+        """
         items_data = request.data.get('items', [])
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -47,10 +52,25 @@ class ConsumableRequestViewSet(viewsets.ModelViewSet):
                 ser = ConsumableRequestItemSerializer(data={**item, 'request': req.id})
                 ser.is_valid(raise_exception=True)
                 ser.save()
+            try:
+                req.submit()
+            except ValidationError as exc:
+                raise DRFValidationError({'detail': exc.message})
         return Response(
             ConsumableRequestSerializer(req, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=['get'], url_path='stats')
+    def stats(self, request):
+        """Status rollup for the dashboard cards (counts across all requests)."""
+        rows = ConsumableRequest.objects.values('status').annotate(c=Count('id'))
+        by_status = {row['status']: row['c'] for row in rows}
+        return Response({
+            'total': sum(by_status.values()),
+            'by_status': by_status,
+            'pending_approval': by_status.get('submitted', 0),
+        })
 
     @action(detail=True, methods=['post'], url_path='add-items')
     def add_items(self, request, pk=None):
@@ -104,8 +124,19 @@ class ConsumableRequestViewSet(viewsets.ModelViewSet):
         for upd in request.data.get('items', []):
             if upd.get('id') is not None and upd.get('approved_quantity') is not None:
                 item_quantities[str(upd['id'])] = upd['approved_quantity']
+
+        # The approver chooses where stock is deducted from. Resolve it here if
+        # sent; the model enforces a source must be set to approve.
+        source_location = None
+        source_id = request.data.get('source_location')
+        if source_id:
+            try:
+                source_location = Location.objects.get(id=source_id)
+            except Location.DoesNotExist:
+                return Response({'detail': 'Source location not found.'}, status=status.HTTP_404_NOT_FOUND)
+
         try:
-            req.approve(performed_by=request.user, item_quantities=item_quantities)
+            req.approve(performed_by=request.user, item_quantities=item_quantities, source_location=source_location)
         except ValidationError as exc:
             return Response({'detail': exc.message}, status=status.HTTP_400_BAD_REQUEST)
         return self._respond(request, req)
@@ -121,14 +152,35 @@ class ConsumableRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='dispatch')
     def dispatch_request(self, request, pk=None):
+        """Dispatch out of stock. When the request is linked to an assembly order
+        (assembly_reference), the destination is auto-derived from that order's
+        assembly line — the caller doesn't need to (and can't) pick one. Only
+        standalone requests (no assembly_reference) take a manual destination."""
         req = self.get_object()
-        dest_id = request.data.get('destination_location')
         destination = None
-        if dest_id:
-            try:
-                destination = Location.objects.get(id=dest_id)
-            except Location.DoesNotExist:
-                return Response({'detail': 'Destination location not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if req.assembly_reference:
+            from assembly.models import AssemblyOrder
+            order = (
+                AssemblyOrder.objects
+                .filter(assembly_number=req.assembly_reference)
+                .select_related('assembly_line')
+                .first()
+            )
+            if not order or not order.assembly_line:
+                return Response(
+                    {'detail': f"Linked assembly order {req.assembly_reference} has no assembly line set — set one before dispatching."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            destination = order.assembly_line
+        else:
+            dest_id = request.data.get('destination_location')
+            if dest_id:
+                try:
+                    destination = Location.objects.get(id=dest_id)
+                except Location.DoesNotExist:
+                    return Response({'detail': 'Destination location not found.'}, status=status.HTTP_404_NOT_FOUND)
+
         try:
             req.dispatch(performed_by=request.user, destination_location=destination)
         except ValidationError as exc:

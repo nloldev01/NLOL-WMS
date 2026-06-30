@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import { apiFetch, getApiError } from '../utils/api'
@@ -15,6 +16,37 @@ const STATUS_CONFIG = {
   cancelled:   { label: 'Cancelled',   color: 'bg-red-50 text-red-600' },
 }
 
+// Linked consumable-request status → dot colour (consumables progression)
+const CR_DOT = {
+  submitted:  'bg-amber-400',
+  approved:   'bg-blue-400',
+  rejected:   'bg-red-400',
+  dispatched: 'bg-violet-400',
+  returned:   'bg-green-400',
+  consumed:   'bg-teal-400',
+}
+
+// Same progression, as a badge background/text pair for the Consumables column
+const CR_BADGE = {
+  submitted:  'bg-amber-50 text-amber-700',
+  approved:   'bg-blue-50 text-blue-700',
+  rejected:   'bg-red-50 text-red-600',
+  dispatched: 'bg-violet-50 text-violet-700',
+  returned:   'bg-green-50 text-green-700',
+  consumed:   'bg-teal-50 text-teal-700',
+}
+
+// Consumable quantities are whole units (stickers/caps) — block decimal entry.
+const blockDecimal = (e) => { if (['.', ',', 'e', 'E', '+', '-'].includes(e.key)) e.preventDefault() }
+// Strictly whole numbers — strips anything that isn't a digit (paste-proof).
+const wholeOnly = (v) => String(v).replace(/\D/g, '')
+
+// Mirrors FirstFillTestPage's QUALITY_CONFIG for the batches still awaiting QC.
+const QC_PENDING_CONFIG = {
+  pending: { label: 'Pending Test', color: 'bg-slate-100 text-slate-600' },
+  failed:  { label: 'Failed',       color: 'bg-amber-50 text-amber-700' },
+}
+
 const emptyForm = {
   finished_product: '',
   finished_product_variant: '',
@@ -27,6 +59,7 @@ const emptyForm = {
 }
 
 const AssemblyOrdersPage = () => {
+  const navigate = useNavigate()
   const [orders, setOrders]                       = useState([])
   const [finishedProducts, setFinishedProducts]   = useState([])
   const [variants, setVariants]                   = useState([])
@@ -40,6 +73,8 @@ const AssemblyOrdersPage = () => {
   const [filters, setFilters]                     = useState({ status: '', finished_product: '' })
   const [filterOpen, setFilterOpen]               = useState(false)
   const filterRef                                 = useRef(null)
+  const [expandedId, setExpandedId]               = useState(null)
+  const toggleExpand = (id) => setExpandedId(prev => (prev === id ? null : id))
 
   const [assemblyLines, setAssemblyLines]         = useState([])
   const [productionQueue, setProductionQueue]     = useState([])
@@ -62,17 +97,18 @@ const AssemblyOrdersPage = () => {
   const [actionError, setActionError]               = useState('')
   const [actionLoading, setActionLoading]           = useState(null)
 
-  // Materials modal (add/remove lines on an in_progress order)
-  const [materialsOrder, setMaterialsOrder]       = useState(null)
-  const [materialLines, setMaterialLines]         = useState([])
-  const [allMaterials, setAllMaterials]           = useState([])
-  const [newMatMaterial, setNewMatMaterial]       = useState('')
-  const [newMatQty, setNewMatQty]                 = useState('')
-  const [newMatLocation, setNewMatLocation]       = useState('')
-  const [matSubmitting, setMatSubmitting]         = useState(false)
-  const [matError, setMatError]                   = useState('')
+  // Request Consumables modal — suggests qty from the BOM (if any) but any
+  // consumable can be added freely, with its own quantity.
+  const [reqOrder, setReqOrder]                   = useState(null)
+  const [reqItems, setReqItems]                   = useState([])   // [{material, material_name, unit_symbol, quantity}]
+  const [reqPickMaterial, setReqPickMaterial]     = useState('')
+  const [reqPickQty, setReqPickQty]               = useState('')
+  const [reqSubmitting, setReqSubmitting]         = useState(false)
+  const [reqError, setReqError]                   = useState('')
+  const [reqCreated, setReqCreated]               = useState('')
+  const [allConsumables, setAllConsumables]       = useState([])
 
-  useEffect(() => { fetchFinishedProducts(); fetchLocations(); fetchProductionQueue(); fetchAssemblyLines() }, [])
+  useEffect(() => { fetchFinishedProducts(); fetchLocations(); fetchProductionQueue(); fetchAssemblyLines(); fetchAllConsumables() }, [])
   useEffect(() => { fetchOrders() }, [search, filters])
 
   useEffect(() => {
@@ -139,10 +175,17 @@ const AssemblyOrdersPage = () => {
     if (res?.ok) { const d = await res.json(); setAssemblyLines(Array.isArray(d) ? d : (d.results ?? [])) }
   }
 
+  // Full consumable catalogue — lets a worker request any consumable, not just
+  // the ones pre-defined in the product's Packaging BOM.
+  const fetchAllConsumables = async () => {
+    const res = await apiFetch('/master-data/raw-materials-and-consumables/?type=consumable')
+    if (res?.ok) { const d = await res.json(); setAllConsumables(Array.isArray(d) ? d : (d.results ?? [])) }
+  }
+
   const fetchProductionQueue = async () => {
     setQueueLoading(true)
     try {
-      const res = await apiFetch('/products-stock/stock/?batch__batch_type=PRD&batch__quality_status=passed&location__type=assembly')
+      const res = await apiFetch('/products-stock/stock/?batch__batch_type=PRD&location__type=assembly')
       if (res?.ok) {
         const d = await res.json()
         const items = Array.isArray(d) ? d : (d.results ?? [])
@@ -164,6 +207,13 @@ const AssemblyOrdersPage = () => {
     }
   }
 
+  // productionQueue holds all PRD stock at assembly lines, any QC status — split
+  // into what's actually assemblable vs. what's still waiting on First Fill Test.
+  // 'not_required' batches skip QC entirely (see FirstFillTestPage's own queue
+  // filter) so they're assemblable immediately, same as 'passed'.
+  const readyQueue     = productionQueue.filter(s => s.quality_status === 'passed' || s.quality_status === 'not_required')
+  const pendingQCQueue = productionQueue.filter(s => s.quality_status === 'pending' || s.quality_status === 'failed')
+
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
   // Assembled orders float to the top so they're immediately visible for labeling
   const STATUS_SORT = { assembled: 0, in_progress: 1, draft: 2, completed: 3, cancelled: 4 }
@@ -183,10 +233,10 @@ const AssemblyOrdersPage = () => {
 
   // ── Derived assembly calculations (live, used by form + pickFromQueue) ──────
   const selectedVariant = variants.find(v => String(v.id) === String(form.finished_product_variant))
-  const sourceStock = productionQueue.find(s =>
+  const sourceStock = readyQueue.find(s =>
     String(s.batch) === String(form.source_batch) &&
     String(s.location) === String(form.source_location)
-  ) || productionQueue.find(s => String(s.batch) === String(form.source_batch))
+  ) || readyQueue.find(s => String(s.batch) === String(form.source_batch))
   const availableQty        = sourceStock ? parseFloat(sourceStock.quantity) : null
   const volumePerUnit       = selectedVariant ? parseFloat(selectedVariant.volume) : null
   const maxAssemblableUnits = (availableQty && volumePerUnit && volumePerUnit > 0)
@@ -216,40 +266,6 @@ const AssemblyOrdersPage = () => {
       else if (!isNaN(entered)) val = String(entered)
     }
     setForm(prev => ({ ...prev, [name]: val }))
-  }
-
-  const openMaterialsModal = async (order) => {
-    setMaterialsOrder(order); setMaterialLines([]); setNewMatMaterial(''); setNewMatQty(''); setNewMatLocation(''); setMatError('')
-    const [linesRes, matsRes] = await Promise.all([
-      apiFetch(`/assembly/material-lines/?assembly_order=${order.id}`),
-      apiFetch('/master-data/raw-materials/'),
-    ])
-    if (linesRes?.ok) { const d = await linesRes.json(); setMaterialLines(Array.isArray(d) ? d : (d.results ?? [])) }
-    if (matsRes?.ok)  { const d = await matsRes.json();  setAllMaterials(Array.isArray(d) ? d : (d.results ?? [])) }
-  }
-
-  const addMaterialLine = async () => {
-    if (!newMatMaterial || !newMatQty) { setMatError('Select a material and enter quantity.'); return }
-    setMatSubmitting(true); setMatError('')
-    const payload = {
-      assembly_order: materialsOrder.id,
-      material:       parseInt(newMatMaterial),
-      quantity:       parseFloat(newMatQty),
-      ...(newMatLocation ? { location: parseInt(newMatLocation) } : {}),
-    }
-    const res = await apiFetch('/assembly/material-lines/', { method: 'POST', body: JSON.stringify(payload) })
-    if (res?.ok) {
-      const d = await res.json(); setMaterialLines(prev => [...prev, d])
-      setNewMatMaterial(''); setNewMatQty(''); setNewMatLocation('')
-    } else {
-      const e = await res.json(); setMatError(e.detail || Object.values(e).flat()[0] || 'Failed to add')
-    }
-    setMatSubmitting(false)
-  }
-
-  const deleteMaterialLine = async (lineId) => {
-    const res = await apiFetch(`/assembly/material-lines/${lineId}/`, { method: 'DELETE' })
-    if (res?.ok || res?.status === 204) setMaterialLines(prev => prev.filter(l => l.id !== lineId))
   }
 
   const pickFromQueue = async (stockItem) => {
@@ -309,7 +325,7 @@ const AssemblyOrdersPage = () => {
       }
       const res = await apiFetch('/assembly/assembly-orders/', { method: 'POST', body: JSON.stringify(payload) })
       if (res?.ok) {
-        fetchOrders(); setCreateOpen(false); setForm(emptyForm); setBomPreview([])
+        fetchOrders(); setCreateOpen(false); setForm(emptyForm)
       } else {
         setFormError(await getApiError(res))
       }
@@ -323,27 +339,6 @@ const AssemblyOrdersPage = () => {
       const res = await apiFetch(`/assembly/assembly-orders/${order.id}/start/`, { method: 'POST' })
       if (res?.ok) fetchOrders()
       else setActionError(await getApiError(res))
-    } catch { setActionError('Connection error — check your network') }
-    finally { setActionLoading(null) }
-  }
-
-  const handleLabel = async (order) => {
-    setActionError(''); setActionLoading(order.id)
-    try {
-      const res = await apiFetch(`/assembly/assembly-orders/${order.id}/label/`, { method: 'POST' })
-      if (res?.ok) {
-        const data = await res.json()
-        fetchOrders()
-        fetchProductionQueue()
-        // Generate print job and open label print modal
-        const jobRes = await apiFetch(`/assembly/assembly-orders/${order.id}/generate-labels/`, { method: 'POST' })
-        if (jobRes?.ok) {
-          const jobData = await jobRes.json()
-          setPrintJobData(jobData)
-        } else if (data.batch_code || data.lpn_code) {
-          setSuccessLog(data)
-        }
-      } else setActionError(await getApiError(res))
     } catch { setActionError('Connection error — check your network') }
     finally { setActionLoading(null) }
   }
@@ -367,6 +362,50 @@ const AssemblyOrdersPage = () => {
       else setActionError(await getApiError(res))
     } catch { setActionError('Connection error — check your network') }
     finally { setActionLoading(null) }
+  }
+
+  const openReqModal = (order) => {
+    setReqOrder(order); setReqError(''); setReqCreated('')
+    setReqItems((order.required_consumables || []).map(c => ({
+      material: c.material, material_name: c.material_name, unit_symbol: c.unit_symbol,
+      quantity: String(c.required_quantity),
+    })))
+    setReqPickMaterial(''); setReqPickQty('')
+  }
+
+  const addReqItem = () => {
+    if (!reqPickMaterial || !reqPickQty || parseFloat(reqPickQty) <= 0) return
+    const mat = allConsumables.find(m => String(m.id) === String(reqPickMaterial))
+    if (!mat) return
+    setReqItems(prev => {
+      const existing = prev.find(i => String(i.material) === String(reqPickMaterial))
+      if (existing) {
+        return prev.map(i => String(i.material) === String(reqPickMaterial)
+          ? { ...i, quantity: String((parseFloat(i.quantity) || 0) + parseFloat(reqPickQty)) } : i)
+      }
+      return [...prev, { material: mat.id, material_name: mat.name, unit_symbol: mat.unit_symbol, quantity: reqPickQty }]
+    })
+    setReqPickMaterial(''); setReqPickQty('')
+  }
+
+  const removeReqItem = (materialId) =>
+    setReqItems(prev => prev.filter(i => String(i.material) !== String(materialId)))
+
+  const submitConsumableRequest = async () => {
+    const items = reqItems
+      .map(i => ({ material: parseInt(i.material), quantity: parseFloat(i.quantity) }))
+      .filter(it => it.quantity > 0)
+    if (items.length === 0) { setReqError('Add at least one consumable with a quantity greater than 0.'); return }
+    setReqSubmitting(true); setReqError('')
+    try {
+      const res = await apiFetch(`/assembly/assembly-orders/${reqOrder.id}/request-consumables/`, {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+      })
+      if (res?.ok) { const d = await res.json(); setReqCreated(d.request_number); fetchOrders() }
+      else setReqError(await getApiError(res))
+    } catch { setReqError('Connection error — check your network') }
+    finally { setReqSubmitting(false) }
   }
 
   const openCompleteModal = (order) => {
@@ -475,12 +514,16 @@ const AssemblyOrdersPage = () => {
             </div>
             {queueLoading ? (
               <div className="px-6 py-4 text-xs text-gray-400">Loading...</div>
-            ) : productionQueue.length === 0 ? (
-              <div className="px-6 py-4 text-xs text-gray-400 italic">No PRD stock found at assembly line locations. Transfer base product stock from a kettle to an assembly line first.</div>
+            ) : readyQueue.length === 0 ? (
+              <div className="px-6 py-4 text-xs text-gray-400 italic">
+                {pendingQCQueue.length > 0
+                  ? 'Nothing ready yet — see Pending QC below.'
+                  : 'No PRD stock found at assembly line locations. Transfer base product stock from a kettle to an assembly line first.'}
+              </div>
             ) : (
               <div className="px-6 py-3">
                 <div className="flex flex-wrap gap-2">
-                  {productionQueue.map(stock => {
+                  {readyQueue.map(stock => {
                     const reserved        = +(reservedByBatch[String(stock.batch)] || 0).toFixed(4)
                     const total           = parseFloat(stock.quantity)
                     const netAvailable    = Math.max(0, total - reserved)
@@ -539,11 +582,54 @@ const AssemblyOrdersPage = () => {
             )}
           </div>
 
+          {/* Pending QC — stock that arrived at an assembly line but hasn't cleared First Fill Test yet */}
+          {pendingQCQueue.length > 0 && (
+            <div className="rounded-xl bg-white shadow-sm mb-4 border border-amber-200">
+              <div className="flex items-center justify-between px-6 py-3 border-b border-amber-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-amber-400"></div>
+                  <h3 className="text-sm font-semibold text-gray-800">Pending QC</h3>
+                  <span className="text-[10px] text-gray-400 font-normal">At an assembly line, waiting on First Fill Test before it can be assembled</span>
+                </div>
+                <button onClick={() => navigate('/production/first-fill-test')} className="text-[10px] text-orange-500 hover:underline whitespace-nowrap">Go to First Fill Test →</button>
+              </div>
+              <div className="px-6 py-3">
+                <div className="flex flex-wrap gap-2">
+                  {pendingQCQueue.map(stock => {
+                    const lineForStock = assemblyLines.find(l => String(l.id) === String(stock.location))
+                    const qc           = QC_PENDING_CONFIG[stock.quality_status] || QC_PENDING_CONFIG.pending
+                    return (
+                      <button
+                        key={stock.id}
+                        onClick={() => navigate('/production/first-fill-test')}
+                        className="flex flex-col text-left p-3 rounded-lg border border-amber-200 bg-amber-50/30 hover:border-amber-400 hover:bg-amber-50 transition-all group min-w-[190px]"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="font-mono text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 font-bold">{stock.batch_code || '—'}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${qc.color}`}>{qc.label}</span>
+                        </div>
+                        <div className="text-xs font-medium text-gray-700">{stock.product_name}</div>
+                        {lineForStock && (
+                          <div className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded inline-block mt-0.5 mb-1">{lineForStock.name}</div>
+                        )}
+                        {!lineForStock && <div className="text-[10px] text-gray-400 truncate mb-1.5">{stock.location_name}</div>}
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-gray-400">Quantity</span>
+                          <span className="font-bold text-slate-600">{parseFloat(stock.quantity).toLocaleString()} <span className="font-normal uppercase">{stock.unit}</span></span>
+                        </div>
+                        <div className="mt-1.5 text-[9px] font-bold text-amber-600 uppercase tracking-wide opacity-0 group-hover:opacity-100 transition-opacity">Go test this batch →</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-xl bg-white shadow-sm">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Assembly Line Orders</h2>
-                <p className="text-[10px] text-gray-400 mt-0.5">Converts base product + packaging materials → filled finished product (no label yet)</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="relative">
@@ -586,51 +672,46 @@ const AssemblyOrdersPage = () => {
               <table className="w-full text-sm text-left">
                 <thead className="bg-primary text-white text-xs uppercase">
                   <tr>
+                    <th className="px-2 py-3 w-8"></th>
                     <th className="px-4 py-3 w-10">No</th>
                     <th className="px-4 py-3">Assembly #</th>
-                    <th className="px-4 py-3">Line</th>
                     <th className="px-4 py-3">Product Variant</th>
-                    <th className="px-4 py-3">Source → Destination</th>
                     <th className="px-4 py-3">Quantity</th>
-                    <th className="px-4 py-3">Batches</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Created</th>
                     <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {paginated.length === 0 ? (
-                    <tr><td colSpan={10} className="px-6 py-10 text-center text-gray-400">No assembly orders found</td></tr>
+                    <tr><td colSpan={6} className="px-6 py-10 text-center text-gray-400">No assembly orders found</td></tr>
                   ) : paginated.map((order, idx) => {
                     const statusCfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.draft
+                    const isExpanded = expandedId === order.id
                     return (
-                      <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                      <Fragment key={order.id}>
+                      <tr onClick={() => toggleExpand(order.id)} className="hover:bg-gray-50 transition-colors cursor-pointer">
+                        <td className="px-2 py-3 text-gray-400">
+                          <span className={`inline-block transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▸</span>
+                        </td>
                         <td className="px-4 py-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                         <td className="px-4 py-3">
-                          <span className="font-mono text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">{order.assembly_number}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {order.assembly_line_name ? (
-                            <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{order.assembly_line_name}</span>
-                          ) : <span className="text-gray-300 text-[10px]">—</span>}
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="font-mono text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">{order.assembly_number}</span>
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${statusCfg.color}`}>{statusCfg.label}</span>
+                            {order.print_jobs_count > 0 && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handlePrintLabels(order) }}
+                                disabled={actionLoading === order.id}
+                                title="Stickers printed — click to reprint"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-green-50 text-green-700 border border-green-100 hover:bg-green-100 disabled:opacity-50">
+                                {actionLoading === order.id ? '…' : '✓ Stickers Printed'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-gray-900 text-sm">{order.finished_product_name}</div>
                           <div className="text-[10px] text-gray-400">{order.finished_product_variant_label}</div>
                           <div className="text-[10px] text-gray-300">Base: {order.base_product_name}</div>
-                        </td>
-                        <td className="px-4 py-3 text-xs">
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] font-bold text-rose-500 w-6">SRC</span>
-                              <span className="text-slate-600">{order.source_location_name}</span>
-                              {order.source_batch_code && <span className="font-mono text-[9px] text-orange-500 bg-orange-50 px-1 rounded">{order.source_batch_code}</span>}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] font-bold text-emerald-500 w-6">DST</span>
-                              <span className="text-slate-600">{order.destination_location_name}</span>
-                            </div>
-                          </div>
                         </td>
                         <td className="px-4 py-3 font-bold text-slate-800">
                           <div className="text-[9px] text-gray-400 uppercase font-semibold tracking-wide">Target</div>
@@ -646,33 +727,29 @@ const AssemblyOrdersPage = () => {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {order.produced_batch_code ? (
-                            <span className="font-mono text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">{order.produced_batch_code}</span>
-                          ) : <span className="text-gray-300 text-xs">—</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${statusCfg.color}`}>{statusCfg.label}</span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">{new Date(order.created_at).toLocaleDateString()}</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
+                          <div onClick={e => e.stopPropagation()} className="flex flex-col items-stretch gap-1.5">
+                            {(order.status === 'draft' || order.status === 'in_progress') && (
+                              <button onClick={() => openReqModal(order)} title="Request consumables from this product's BOM requirement" className="rounded-md bg-amber-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-amber-600">Request Consumables</button>
+                            )}
+                            {(order.status === 'draft' || order.status === 'in_progress' || order.produced_batch_code) && !order.print_jobs_count && (
+                              <button onClick={() => handlePrintLabels(order)} disabled={actionLoading === order.id}
+                                      title="Generate product stickers"
+                                      className="rounded-md bg-slate-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-slate-700 disabled:opacity-50">
+                                {actionLoading === order.id ? '…' : 'Print Stickers'}
+                              </button>
+                            )}
                             {order.status === 'draft' && (
                               <button onClick={() => handleStart(order)} disabled={actionLoading === order.id} className="rounded-md bg-blue-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-blue-600 disabled:opacity-50">
                                 {actionLoading === order.id ? '…' : 'Start'}
                               </button>
                             )}
-                            {order.status === 'in_progress' && (<>
-                              <button onClick={() => openMaterialsModal(order)} className="rounded-md bg-indigo-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-indigo-600">Materials</button>
-                              <button onClick={() => openCompleteModal(order)} className="rounded-md bg-teal-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-teal-600">Mark Assembled</button>
-                            </>)}
-                            {order.status === 'assembled' && (
-                              <button onClick={() => handleLabel(order)} disabled={actionLoading === order.id} className="rounded-md bg-orange-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-orange-600 disabled:opacity-50">
-                                {actionLoading === order.id ? 'Labeling…' : 'Add Labels'}
-                              </button>
-                            )}
-                            {order.status === 'completed' && order.produced_batch_code && (
-                              <button onClick={() => handlePrintLabels(order)} disabled={actionLoading === order.id} className="rounded-md bg-slate-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-slate-700 disabled:opacity-50">
-                                {actionLoading === order.id ? '…' : 'Print Stickers'}
+                            {order.status === 'in_progress' && (
+                              <button
+                                onClick={() => openCompleteModal(order)}
+                                title="Mark this order assembled once the line is done"
+                                className="rounded-md bg-teal-500 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-teal-600"
+                              >
+                                Mark Assembled
                               </button>
                             )}
                             {order.status !== 'completed' && order.status !== 'cancelled' && order.status !== 'assembled' && (
@@ -681,6 +758,55 @@ const AssemblyOrdersPage = () => {
                           </div>
                         </td>
                       </tr>
+                      {isExpanded && (
+                        <tr className="bg-slate-50/60">
+                          <td colSpan={6} className="px-6 py-4">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div>
+                                <div className="text-[9px] text-gray-400 uppercase font-semibold tracking-wide mb-1">Source → Destination</div>
+                                <div className="flex flex-col gap-0.5 text-xs">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] font-bold text-rose-500 w-6">SRC</span>
+                                    <span className="text-slate-600">{order.source_location_name}</span>
+                                    {order.source_batch_code && <span className="font-mono text-[9px] text-orange-500 bg-orange-50 px-1 rounded">{order.source_batch_code}</span>}
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] font-bold text-emerald-500 w-6">DST</span>
+                                    <span className="text-slate-600">{order.destination_location_name}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-[9px] text-gray-400 uppercase font-semibold tracking-wide mb-1">Produced Batch</div>
+                                {order.produced_batch_code ? (
+                                  <span className="font-mono text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">{order.produced_batch_code}</span>
+                                ) : <span className="text-gray-300 text-xs">—</span>}
+                              </div>
+                              <div>
+                                <div className="text-[9px] text-gray-400 uppercase font-semibold tracking-wide mb-1">Consumables</div>
+                                {order.linked_consumable_requests?.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {order.linked_consumable_requests.slice(0, 2).map(r => (
+                                      <span key={r.id} title={r.request_number} className={`inline-flex items-center gap-1 w-fit px-1.5 py-0.5 rounded text-[9px] font-semibold ${CR_BADGE[r.status] || 'bg-gray-50 text-gray-500'}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${CR_DOT[r.status] || 'bg-gray-300'}`}></span>
+                                        {r.status_display}
+                                        <span className="font-mono font-normal opacity-70">{r.request_number.replace(/^CR-\d+-/, 'CR-')}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-50 text-gray-400">Not requested</span>
+                                )}
+                              </div>
+                              <div>
+                                <div className="text-[9px] text-gray-400 uppercase font-semibold tracking-wide mb-1">Created</div>
+                                <span className="text-gray-500 text-xs">{new Date(order.created_at).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     )
                   })}
                 </tbody>
@@ -758,7 +884,7 @@ const AssemblyOrdersPage = () => {
                 <div className="flex items-center justify-between p-3 rounded-lg bg-teal-50 border border-teal-200">
                   <div className="flex items-center gap-2 text-xs flex-wrap">
                     <span className="font-mono text-orange-600 font-bold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
-                      {productionQueue.find(s => String(s.batch) === String(form.source_batch))?.batch_code || `Batch #${form.source_batch}`}
+                      {readyQueue.find(s => String(s.batch) === String(form.source_batch))?.batch_code || `Batch #${form.source_batch}`}
                     </span>
                     <span className="text-teal-500">@</span>
                     <span className="text-teal-700 font-medium">
@@ -903,8 +1029,18 @@ const AssemblyOrdersPage = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-1">Actual Quantity Assembled *</label>
-                <input type="number" step="any" value={completeActual} onChange={e => setCompleteActual(e.target.value)} onWheel={e => e.target.blur()} className="w-full rounded-lg border border-orange-200 bg-orange-50/30 px-3 py-2 text-sm font-bold text-orange-700 focus:border-orange-500 outline-none" />
+                <label className="block text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-1">Actual Quantity Assembled * <span className="font-normal normal-case text-gray-400">(max {parseFloat(completeTarget.target_quantity).toLocaleString()})</span></label>
+                <input
+                  type="number" step="any" max={completeTarget.target_quantity}
+                  value={completeActual}
+                  onChange={e => {
+                    const target = parseFloat(completeTarget.target_quantity)
+                    const entered = parseFloat(e.target.value)
+                    setCompleteActual(!isNaN(entered) && entered > target ? String(target) : e.target.value)
+                  }}
+                  onWheel={e => e.target.blur()}
+                  className="w-full rounded-lg border border-orange-200 bg-orange-50/30 px-3 py-2 text-sm font-bold text-orange-700 focus:border-orange-500 outline-none"
+                />
                 {completeActual && parseFloat(completeActual) < parseFloat(completeTarget.target_quantity) && (
                   <p className="text-[10px] text-rose-500 mt-1">Wastage: {(parseFloat(completeTarget.target_quantity) - parseFloat(completeActual)).toLocaleString()} units</p>
                 )}
@@ -916,22 +1052,26 @@ const AssemblyOrdersPage = () => {
                     • Deduct base product from {completeTarget.source_location_name}
                   </p>
                   <p className="text-[10px] text-teal-600">• Create FIN batch + add {parseFloat(completeActual).toLocaleString()} {completeTarget.volume_unit_symbol} {completeTarget.unit_name} to {completeTarget.destination_location_name}</p>
-                  {completeTarget.material_lines?.length > 0 ? (
-                    completeTarget.material_lines.map(line => (
-                      <p key={line.id} className="text-[10px] text-teal-600">
-                        • Deduct <strong>{parseFloat(line.quantity).toLocaleString()} {line.unit_symbol}</strong> of {line.material_name}
-                        {line.location_name && <span className="text-teal-400"> from {line.location_name}</span>}
-                      </p>
-                    ))
-                  ) : (
-                    <p className="text-[10px] text-amber-600">• No materials recorded yet — add via the Materials button if needed</p>
-                  )}
+                  {/* Consumable reconciliation via the consumable-request loop */}
+                  {completeTarget.linked_consumable_requests?.some(r => r.status === 'dispatched') ? (
+                    <p className="text-[10px] text-teal-600">• Reconcile consumable usage against the dispatched consumable request (full dispatched qty consumed)</p>
+                  ) : completeTarget.required_consumables?.length > 0 ? (
+                    <p className="text-[10px] text-amber-600">• Consumables not dispatched via a consumable request — they will <strong>not</strong> be deducted</p>
+                  ) : null}
                 </div>
               )}
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-slate-50/30">
               <button onClick={() => setCompleteTarget(null)} className="rounded-lg border border-gray-200 px-5 py-2 text-sm font-bold text-slate-500 hover:bg-white">Cancel</button>
-              <button onClick={handleComplete} disabled={completing || !completeDestination || !completeActual || parseFloat(completeActual) <= 0} className="rounded-lg bg-green-500 px-6 py-2 text-sm font-bold text-white shadow-lg shadow-green-200 hover:bg-green-600 disabled:opacity-50 active:scale-95 transition-all">
+              <button
+                onClick={handleComplete}
+                disabled={
+                  completing || !completeDestination || !completeActual ||
+                  parseFloat(completeActual) <= 0 ||
+                  parseFloat(completeActual) > parseFloat(completeTarget.target_quantity)
+                }
+                className="rounded-lg bg-green-500 px-6 py-2 text-sm font-bold text-white shadow-lg shadow-green-200 hover:bg-green-600 disabled:opacity-50 active:scale-95 transition-all"
+              >
                 {completing ? 'Processing...' : 'Mark as Assembled'}
               </button>
             </div>
@@ -939,64 +1079,94 @@ const AssemblyOrdersPage = () => {
         </div>
       )}
 
-      {/* Materials Modal */}
-      {materialsOrder && (
+      {/* Request Consumables Modal */}
+      {reqOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">Materials Used</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">{materialsOrder.assembly_number} — Record consumables and base products consumed</p>
+                <h3 className="text-base font-semibold text-gray-900">Request Consumables</h3>
+                <p className="text-[10px] text-gray-400 mt-0.5">{reqOrder.assembly_number} — pre-filled from this product's consumables requirement</p>
               </div>
-              <button onClick={() => { setMaterialsOrder(null); fetchOrders() }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              <button onClick={() => setReqOrder(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              {matError && <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{matError}</div>}
+              {reqError && <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{reqError}</div>}
 
-              {/* Existing lines */}
-              {materialLines.length > 0 ? (
-                <div className="space-y-1.5">
-                  {materialLines.map(line => (
-                    <div key={line.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-gray-100">
-                      <div>
-                        <span className="text-xs font-semibold text-gray-800">{line.material_name}</span>
-                        {line.location_name && <span className="text-[10px] text-gray-400 ml-1">@ {line.location_name}</span>}
-                        <span className="text-[10px] text-gray-400 ml-1.5">({line.material_type})</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-700">{parseFloat(line.quantity).toLocaleString()} <span className="font-normal text-gray-400">{line.unit_symbol}</span></span>
-                        <button onClick={() => deleteMaterialLine(line.id)} className="text-red-400 hover:text-red-600 text-xs px-1.5 py-0.5 rounded hover:bg-red-50">✕</button>
-                      </div>
-                    </div>
-                  ))}
+              {reqCreated ? (
+                <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-800">
+                  Created consumable request <span className="font-mono font-bold">{reqCreated}</span>.
+                  <p className="text-[11px] text-green-600 mt-1">Approve &amp; dispatch it to this order's assembly line from the <strong>Consumables</strong> page. It will be reconciled automatically when this order is completed.</p>
                 </div>
               ) : (
-                <p className="text-xs text-gray-400 italic text-center py-2">No materials recorded yet.</p>
-              )}
-
-              {/* Add new line */}
-              <div className="border-t border-gray-100 pt-4">
-                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Add Material / Consumable</p>
-                <div className="grid grid-cols-1 gap-2">
-                  <select value={newMatMaterial} onChange={e => setNewMatMaterial(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-indigo-500 outline-none">
-                    <option value="">Select material or consumable...</option>
-                    {allMaterials.map(m => (
-                      <option key={m.id} value={m.id}>{m.name} ({m.unit_symbol}) — {m.type_display || m.type}</option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <input type="number" step="any" min="0" placeholder="Quantity used" value={newMatQty} onChange={e => setNewMatQty(e.target.value)} onWheel={e => e.target.blur()} className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-indigo-500 outline-none" />
-                    <select value={newMatLocation} onChange={e => setNewMatLocation(e.target.value)} className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-indigo-500 outline-none">
-                      <option value="">Default location</option>
-                      {locations.map(l => <option key={l.id} value={l.id}>{l.full_path || l.name}</option>)}
-                    </select>
-                    <button onClick={addMaterialLine} disabled={matSubmitting || !newMatMaterial || !newMatQty} className="rounded-lg bg-indigo-500 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-600 disabled:opacity-50">Add</button>
+                <>
+                  {/* Consumables to request — pre-filled from BOM (if any), qty editable, any consumable can be added */}
+                  <div>
+                    {reqItems.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {reqItems.map(i => (
+                          <div key={i.material} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-gray-100">
+                            <span className="text-xs font-semibold text-gray-800">{i.material_name}</span>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number" min="0" step="1"
+                                value={i.quantity}
+                                onKeyDown={blockDecimal}
+                                onChange={e => setReqItems(prev => prev.map(p => p.material === i.material ? { ...p, quantity: wholeOnly(e.target.value) } : p))}
+                                onWheel={e => e.target.blur()}
+                                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-xs text-right focus:border-amber-500 outline-none"
+                              />
+                              <span className="text-[10px] text-gray-400">{i.unit_symbol}</span>
+                              <button onClick={() => removeReqItem(i.material)} className="text-red-400 hover:text-red-600 text-xs px-1 rounded hover:bg-red-50">✕</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">No consumables requirement defined for this product variant — add any consumable below.</p>
+                    )}
                   </div>
-                </div>
-              </div>
+
+                  {/* Add any other consumable, not just what the BOM suggests */}
+                  <div className="border-t border-gray-100 pt-3">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Add another consumable</p>
+                    <div className="flex gap-2">
+                      <select value={reqPickMaterial} onChange={e => setReqPickMaterial(e.target.value)} className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-amber-500 outline-none">
+                        <option value="">Select consumable...</option>
+                        {allConsumables.map(m => <option key={m.id} value={m.id}>{m.name} ({m.unit_symbol})</option>)}
+                      </select>
+                      <input type="number" min="0" step="1" placeholder="Qty" value={reqPickQty} onKeyDown={blockDecimal} onChange={e => setReqPickQty(wholeOnly(e.target.value))} onWheel={e => e.target.blur()} className="w-20 rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:border-amber-500 outline-none" />
+                      <button onClick={addReqItem} disabled={!reqPickMaterial || !reqPickQty} className="rounded-lg bg-slate-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50">Add</button>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-gray-400 italic">The source location — where stock is deducted from — is chosen by the approver on the Consumables page.</p>
+
+                  {/* Existing linked requests */}
+                  {reqOrder.linked_consumable_requests?.length > 0 && (
+                    <div className="text-[10px] text-gray-500">
+                      <p className="font-bold uppercase tracking-wide mb-1">Already linked</p>
+                      {reqOrder.linked_consumable_requests.map(r => (
+                        <div key={r.id} className="flex items-center gap-1.5">
+                          <span className={`w-1.5 h-1.5 rounded-full ${CR_DOT[r.status] || 'bg-gray-300'}`}></span>
+                          <span className="font-mono">{r.request_number}</span>
+                          <span className="text-gray-400">{r.status_display}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end bg-slate-50/30">
-              <button onClick={() => { setMaterialsOrder(null); fetchOrders() }} className="rounded-lg bg-orange-500 px-6 py-2 text-sm font-bold text-white hover:bg-orange-600">Done</button>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-slate-50/30">
+              {reqCreated ? (
+                <button onClick={() => setReqOrder(null)} className="rounded-lg bg-orange-500 px-6 py-2 text-sm font-bold text-white hover:bg-orange-600">Done</button>
+              ) : (<>
+                <button onClick={() => setReqOrder(null)} className="rounded-lg border border-gray-200 px-5 py-2 text-sm font-bold text-slate-500 hover:bg-white">Cancel</button>
+                <button onClick={submitConsumableRequest} disabled={reqSubmitting || reqItems.length === 0} className="rounded-lg bg-amber-500 px-6 py-2 text-sm font-bold text-white shadow-lg shadow-amber-200 hover:bg-amber-600 disabled:opacity-50 transition-all">
+                  {reqSubmitting ? 'Creating…' : 'Create Request'}
+                </button>
+              </>)}
             </div>
           </div>
         </div>
@@ -1030,13 +1200,15 @@ const AssemblyOrdersPage = () => {
               </div>
               {completeSummary.deductions?.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Materials Consumed</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Consumables Used</p>
                   <div className="space-y-1.5">
                     {completeSummary.deductions.map((d, i) => (
                       <div key={i} className={`flex items-center justify-between text-xs rounded-md px-3 py-1.5 ${d.deducted ? 'bg-slate-50' : 'bg-amber-50 border border-amber-100'}`}>
                         <div>
                           <span className={`font-medium ${d.deducted ? 'text-gray-700' : 'text-amber-700'}`}>{d.material_name}</span>
-                          {!d.deducted && <span className="text-[9px] text-amber-500 ml-1.5">recorded only — no stock location set</span>}
+                          {d.via
+                            ? <span className={`text-[9px] ml-1.5 ${d.deducted ? 'text-teal-500' : 'text-amber-500'}`}>{d.via}</span>
+                            : (!d.deducted && <span className="text-[9px] text-amber-500 ml-1.5">recorded only — no stock location set</span>)}
                         </div>
                         <span className="font-bold text-slate-800">{d.quantity_used.toLocaleString()} <span className="font-normal text-gray-400">{d.unit_symbol}</span></span>
                       </div>

@@ -1,13 +1,14 @@
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import VariantPackagingMaterial, AssemblyMaterialLine, AssemblyOrder
-from .serializers import VariantPackagingMaterialSerializer, AssemblyMaterialLineSerializer, AssemblyOrderSerializer
+from .models import VariantPackagingMaterial, AssemblyOrder
+from .serializers import VariantPackagingMaterialSerializer, AssemblyOrderSerializer
 
 
 class VariantPackagingMaterialViewSet(viewsets.ModelViewSet):
@@ -18,16 +19,6 @@ class VariantPackagingMaterialViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return VariantPackagingMaterial.objects.select_related('material', 'material__unit').all()
-
-
-class AssemblyMaterialLineViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
-    serializer_class   = AssemblyMaterialLineSerializer
-    filter_backends    = [DjangoFilterBackend]
-    filterset_fields   = ['assembly_order', 'material']
-
-    def get_queryset(self):
-        return AssemblyMaterialLine.objects.select_related('material', 'material__unit', 'location').all()
 
 
 class AssemblyOrderViewSet(viewsets.ModelViewSet):
@@ -54,6 +45,24 @@ class AssemblyOrderViewSet(viewsets.ModelViewSet):
             'packaging_order',
         ).all()
 
+    def update(self, request, *args, **kwargs):
+        order = self.get_object()
+        if order.status != 'draft':
+            return Response({'detail': 'Only draft assembly orders can be edited.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        order = self.get_object()
+        if order.status != 'draft':
+            return Response({'detail': 'Only draft assembly orders can be edited.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        order = self.get_object()
+        if order.status not in ('draft', 'cancelled'):
+            return Response({'detail': 'Only draft or cancelled assembly orders can be deleted.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=['post'], url_path='start')
     def start(self, request, pk=None):
         order = self.get_object()
@@ -62,6 +71,90 @@ class AssemblyOrderViewSet(viewsets.ModelViewSet):
         order.status = 'in_progress'
         order.save()
         return Response(AssemblyOrderSerializer(order).data)
+
+    @action(detail=True, methods=['post'], url_path='request-consumables')
+    def request_consumables(self, request, pk=None):
+        """Raise a Consumable Request for this assembly order, soft-linked via
+        assembly_reference (= assembly_number). Any consumable-type material can be
+        requested — not just ones pre-defined in the variant's Packaging BOM — with
+        whatever quantity the caller sends in `items` (material id + quantity). If
+        `items` is omitted, falls back to the BOM default = ceil(qty_per_unit × target_quantity)."""
+        from decimal import Decimal, InvalidOperation
+        from math import ceil
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError as DRFValidationError
+        from consumables.models import ConsumableRequest, ConsumableRequestItem
+        from consumables.serializers import ConsumableRequestSerializer
+        from master_data.models import RawMaterialAndConsumable
+
+        order = self.get_object()
+        if order.status in ('completed', 'cancelled'):
+            return Response({'detail': 'Cannot request consumables for a completed or cancelled order.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        existing = (
+            ConsumableRequest.objects
+            .filter(assembly_reference=order.assembly_number,
+                    status__in=('submitted', 'approved', 'dispatched'))
+            .values_list('request_number', flat=True)
+            .first()
+        )
+        if existing:
+            return Response({'detail': f'A consumable request ({existing}) is already in progress for this order.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # No source location here — the requester only says what they need. Where
+        # stock is deducted from is the approver's decision (set at approval).
+        items_payload = request.data.get('items')
+        items = []
+        if items_payload:
+            consumables = RawMaterialAndConsumable.objects.in_bulk(
+                [entry.get('material') for entry in items_payload], field_name='id'
+            )
+            for entry in items_payload:
+                material = consumables.get(entry.get('material'))
+                if not material or material.type != 'consumable':
+                    continue
+                try:
+                    qty = Decimal(str(entry.get('quantity')))
+                except (InvalidOperation, TypeError):
+                    continue
+                if qty <= 0:
+                    continue
+                if qty != qty.to_integral_value():
+                    return Response(
+                        {'detail': f"Quantity for {material.name} must be a whole number."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                items.append((material, qty))
+        else:
+            basis = order.target_quantity or 0
+            for b in order.finished_product_variant.packaging_materials.select_related('material').all():
+                if b.material.type != 'consumable':
+                    continue
+                qty = int(ceil(b.quantity_per_unit * basis))
+                if qty > 0:
+                    items.append((b.material, qty))
+
+        if not items:
+            return Response({'detail': 'Enter a quantity greater than 0 for at least one consumable.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                req = ConsumableRequest.objects.create(
+                    request_number=ConsumableRequest.generate_request_number(),
+                    assembly_reference=order.assembly_number,
+                    created_by=request.user,
+                )
+                for material, qty in items:
+                    ConsumableRequestItem.objects.create(request=req, material=material, requested_quantity=qty)
+                req.submit()
+        except ValidationError as exc:
+            raise DRFValidationError({'detail': exc.message})
+
+        return Response(ConsumableRequestSerializer(req, context={'request': request}).data,
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete(self, request, pk=None):
@@ -125,10 +218,13 @@ class AssemblyOrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='generate-labels')
     def generate_labels(self, request, pk=None):
-        """Create a LabelPrintJob for this order and return all data needed to print labels."""
+        """Create a LabelPrintJob for this order and return all data needed to print labels.
+        Allowed any time before cancellation — including pre-assembly, so the required
+        quantity/content is known and printable ahead of starting the run. Pre-assembly
+        jobs have no batch/LPN yet; AssemblyOrder.complete() backfills them once produced."""
         order = self.get_object()
-        if order.status not in ('assembled', 'completed'):
-            return Response({'detail': 'Order must be assembled or completed to print labels.'}, status=status.HTTP_400_BAD_REQUEST)
+        if order.status == 'cancelled':
+            return Response({'detail': 'Cannot print labels for a cancelled order.'}, status=status.HTTP_400_BAD_REQUEST)
 
         from .models import LabelPrintJob
         lpn   = None
@@ -155,17 +251,30 @@ class AssemblyOrderViewSet(viewsets.ModelViewSet):
             material = f" ({v.get_material_display()})" if v.material else ""
             return f"{v.finished_product.name} {v.volume}{v.volume_unit.symbol} {v.unit.name}{material}"
 
+        if order.destination_location:
+            location_name = order.destination_location.get_full_path()
+        elif order.assembly_line:
+            location_name = order.assembly_line.get_full_path()
+        else:
+            location_name = ''
+
+        produced_at = (
+            (order.updated_at or order.created_at).strftime('%d %b %Y') if batch
+            else timezone.localdate().strftime('%d %b %Y')
+        )
+
         return Response({
-            'job_id':          job.pk,
-            'redeem_code':     str(job.redeem_code),
-            'batch_code':      batch.batch_code if batch else None,
-            'lpn_code':        lpn.lpn_code if lpn else None,
-            'product_name':    variant.finished_product.name if variant else None,
-            'variant_label':   build_variant_label(variant),
-            'quantity':        job.quantity,
-            'unit_name':       variant.unit.name if variant and variant.unit else '',
-            'location_name':   order.destination_location.get_full_path() if order.destination_location else '',
-            'produced_at':     (order.updated_at or order.created_at).strftime('%d %b %Y'),
+            'job_id':           job.pk,
+            'redeem_code':      str(job.redeem_code),
+            'assembly_number':  order.assembly_number,
+            'batch_code':       batch.batch_code if batch else None,
+            'lpn_code':         lpn.lpn_code if lpn else None,
+            'product_name':     variant.finished_product.name if variant else None,
+            'variant_label':    build_variant_label(variant),
+            'quantity':         job.quantity,
+            'unit_name':        variant.unit.name if variant and variant.unit else '',
+            'location_name':    location_name,
+            'produced_at':      produced_at,
         }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='cancel')

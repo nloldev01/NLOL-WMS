@@ -3,12 +3,14 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 
 from accounts.permissions import ModulePermission
-from master_data.models import FinishedProductVariant
-from inventory_core.models import Batch
+from master_data.models import FinishedProduct, FinishedProductVariant
+from master_data.serializers import FinishedProductSerializer, FinishedProductVariantSerializer
+from inventory_core.models import Batch, LPN, Pallet
 
 from .models import (
     DealerOrder, DealerOrderItem,
@@ -22,6 +24,116 @@ from .serializers import (
     DealerStockSerializer,
     DealerSaleSerializer, DealerSaleItemSerializer,
 )
+
+
+def _resolve_lpn_or_pallet(code):
+    """
+    Resolve a scanned code (LPN code or Pallet code) into one-or-more finished-product
+    variants. Returns {'type': 'lpn'|'pallet', 'items': [ {variant_id, variant_label,
+    sku_code, batch_id, batch_code}, ... ]}. Raises ValidationError if nothing matches.
+
+    A Pallet bulk-resolves every FIN batch it holds; an LPN resolves its single batch.
+    """
+    code = (code or '').strip()
+    if not code:
+        raise ValidationError('No code provided.')
+    if len(code) > 200:
+        raise ValidationError('Scanned code is too long.')
+
+    def _item(variant, batch):
+        try:
+            label = f"{variant.finished_product.name} — {variant.volume}{variant.volume_unit.symbol} {variant.unit.name}"
+        except Exception:
+            label = str(variant)
+        return {
+            'variant_id':    variant.id,
+            'variant_label': label,
+            'sku_code':      variant.sku_code,
+            'batch_id':      batch.id,
+            'batch_code':    batch.batch_code,
+        }
+
+    # ── Pallet: bulk-add all FIN items ───────────────────────────────────────────
+    pallet = (
+        Pallet.objects
+        .prefetch_related(
+            'items__lpn__batch__finished_product_variant__finished_product',
+            'items__lpn__batch__finished_product_variant__unit',
+            'items__lpn__batch__finished_product_variant__volume_unit',
+        )
+        .filter(pallet_code=code)
+        .first()
+    )
+    if pallet:
+        items = []
+        seen = set()
+        for pi in pallet.items.all():
+            batch = pi.lpn.batch
+            if batch.batch_type != 'FIN':
+                continue
+            variant = batch.finished_product_variant
+            if not variant or variant.id in seen:
+                continue
+            seen.add(variant.id)
+            items.append(_item(variant, batch))
+        if not items:
+            raise ValidationError(f'Pallet "{code}" has no finished-product items.')
+        return {'type': 'pallet', 'items': items}
+
+    # ── LPN: single item ─────────────────────────────────────────────────────────
+    lpn = (
+        LPN.objects
+        .select_related(
+            'batch__finished_product_variant__finished_product',
+            'batch__finished_product_variant__unit',
+            'batch__finished_product_variant__volume_unit',
+        )
+        .filter(lpn_code=code)
+        .first()
+    )
+    if lpn:
+        batch = lpn.batch
+        variant = batch.finished_product_variant
+        if batch.batch_type != 'FIN' or not variant:
+            raise ValidationError(f'LPN "{code}" is not a finished product.')
+        return {'type': 'lpn', 'items': [_item(variant, batch)]}
+
+    raise ValidationError(f'No LPN or Pallet found for "{code}".')
+
+
+class CatalogViewSet(viewsets.ViewSet):
+    """
+    Read-only finished-product catalog gated by the `dispatch` module, so dealer-role
+    users (who have dispatch access but not master_data) can browse products/variants
+    when building dealer orders/sales.
+    """
+    permission_classes = ModulePermission.read_write('dispatch')
+
+    @action(detail=False, methods=['get'], url_path='products')
+    def products(self, request):
+        qs = (
+            FinishedProduct.objects
+            .select_related('base_product', 'base_product__unit',
+                            'product_group', 'product_segment', 'product_sub_group')
+            .prefetch_related('variants')
+            .filter(is_available=True)
+            .order_by('name')
+        )
+        return Response(FinishedProductSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='variants')
+    def variants(self, request):
+        qs = (
+            FinishedProductVariant.objects
+            .select_related('finished_product', 'finished_product__base_product',
+                            'finished_product__base_product__unit',
+                            'unit', 'volume_unit', 'secondary_unit')
+            .filter(is_available=True)
+        )
+        fp = request.query_params.get('finished_product')
+        if fp:
+            qs = qs.filter(finished_product_id=fp)
+        return Response(FinishedProductVariantSerializer(qs, many=True).data)
 
 
 def _is_dealer(user):
@@ -127,6 +239,31 @@ class DealerOrderViewSet(viewsets.ModelViewSet):
             return Response({'detail': exc.message}, status=status.HTTP_404_NOT_FOUND)
         return Response(data)
 
+    def create(self, request, *args, **kwargs):
+        """One-step create: persist the order together with its items, submitted immediately."""
+        items_data = request.data.get('items', [])
+        if not items_data:
+            return Response({'detail': 'Add at least one item.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            order = serializer.save()
+            enriched = [{**item, 'order': order.id} for item in items_data]
+            item_ser = DealerOrderItemSerializer(data=enriched, many=True)
+            item_ser.is_valid(raise_exception=True)
+            item_ser.save()
+            # No draft phase — the order is submitted on creation.
+            order.status = 'submitted'
+            order.save(update_fields=['status'])
+
+        order.refresh_from_db()
+        return Response(
+            DealerOrderSerializer(order, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     @action(detail=True, methods=['post'], url_path='add-items')
     def add_items(self, request, pk=None):
         from django.db.models import F
@@ -204,8 +341,8 @@ class DealerOrderViewSet(viewsets.ModelViewSet):
         """Create a draft DispatchOrder linked to a DealerOrder (no items pre-populated).
         Warehouse worker scans QR codes on the Dispatch Orders page to add items with batch tracking."""
         order = self.get_object()
-        if order.status not in ('draft', 'approved'):
-            return Response({'detail': 'Only draft or approved orders can generate a dispatch.'}, status=status.HTTP_400_BAD_REQUEST)
+        if order.status not in ('draft', 'submitted', 'approved'):
+            return Response({'detail': 'This order can no longer generate a dispatch.'}, status=status.HTTP_400_BAD_REQUEST)
         if not order.items.exists():
             return Response({'detail': 'Add at least one item before dispatching.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -501,6 +638,37 @@ class DealerSaleViewSet(viewsets.ModelViewSet):
             customer = _dealer_customer(self.request.user)
             return qs.filter(customer=customer) if customer else qs.none()
         return qs.all()
+
+    @action(detail=False, methods=['get'], url_path='scan')
+    def scan(self, request):
+        """Resolve a scanned LPN or Pallet code into finished-product variant(s)."""
+        try:
+            data = _resolve_lpn_or_pallet(request.query_params.get('code', ''))
+        except ValidationError as exc:
+            return Response({'detail': exc.message}, status=status.HTTP_404_NOT_FOUND)
+        return Response(data)
+
+    def create(self, request, *args, **kwargs):
+        """One-step create: persist the sale together with its items in a single request."""
+        items_data = request.data.get('items', [])
+        if not items_data:
+            return Response({'detail': 'Add at least one item.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            sale = serializer.save()
+            enriched = [{**item, 'sale': sale.id} for item in items_data]
+            item_ser = DealerSaleItemSerializer(data=enriched, many=True)
+            item_ser.is_valid(raise_exception=True)
+            item_ser.save()
+
+        sale.refresh_from_db()
+        return Response(
+            DealerSaleSerializer(sale, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=['post'], url_path='add-items')
     def add_items(self, request, pk=None):

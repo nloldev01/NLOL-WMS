@@ -86,7 +86,13 @@ function openPrintPreview(data) {
   const win = window.open('', '_blank')
   if (!win) { alert('Allow pop-ups to use Print Preview'); return }
 
-  const { product_name, variant_label, batch_code, lpn_code, produced_at, quantity, unit_name } = data
+  const product_name   = data.product_name || ''
+  const variant_label  = data.variant_label || ''
+  const batch_code     = data.batch_code || ''
+  const lpn_code       = data.lpn_code || ''
+  const produced_at    = data.produced_at || ''
+  const quantity       = data.quantity
+  const unit_name      = data.unit_name || ''
 
   win.document.write(`<!DOCTYPE html>
 <html>
@@ -245,7 +251,7 @@ const LabelPrintModal = ({ data, onClose }) => {
           <div>
             <h2 className="text-base font-bold text-gray-900">Print Labels</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              {data.quantity} × {data.variant_label} — Batch {data.batch_code}
+              {data.quantity} × {data.variant_label} — {data.batch_code ? `Batch ${data.batch_code}` : data.assembly_number}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-200 rounded-full transition-colors">

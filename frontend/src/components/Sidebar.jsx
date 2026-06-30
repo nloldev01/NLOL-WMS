@@ -111,7 +111,7 @@ const Sidebar = () => {
     }] : []),
     ...(hasAccess('consumables') ? [{
       id: 'consumables',
-      label: 'Consumables',
+      label: 'Consumables Request',
       path: '/consumables',
     }] : []),
     ...(hasAccess('sales') || hasAccess('dispatch') ? [{

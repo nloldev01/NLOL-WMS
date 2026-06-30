@@ -125,6 +125,13 @@ class Location(models.Model):
     def __str__(self):
         return f"[{self.short_code}] {self.name}"
 
+    def get_root(self):
+        """Returns the top-level ancestor of this location (itself if it has no parent)."""
+        node = self
+        while node.parent:
+            node = node.parent
+        return node
+
     def get_full_code(self):
         """Returns globally unique full path code e.g. WH1-STK-BLK-A-RK03-SH01"""
         parts = [self.short_code]

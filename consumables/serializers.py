@@ -30,9 +30,12 @@ class ConsumableRequestItemSerializer(serializers.ModelSerializer):
         return value
 
     def validate_requested_quantity(self, value):
-        if Decimal(str(value)) <= 0:
+        v = Decimal(str(value))
+        if v <= 0:
             raise serializers.ValidationError('Quantity must be greater than zero.')
-        if Decimal(str(value)) > Decimal('999999'):
+        if v != v.to_integral_value():
+            raise serializers.ValidationError('Quantity must be a whole number.')
+        if v > Decimal('999999'):
             raise serializers.ValidationError('Quantity exceeds maximum allowed value.')
         return value
 
@@ -51,6 +54,7 @@ class ConsumableRequestSerializer(serializers.ModelSerializer):
     total_dispatched       = serializers.SerializerMethodField()
     total_used             = serializers.SerializerMethodField()
     total_returned         = serializers.SerializerMethodField()
+    linked_assembly_line_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = ConsumableRequest
@@ -58,7 +62,7 @@ class ConsumableRequestSerializer(serializers.ModelSerializer):
             'id', 'request_number', 'status', 'status_display',
             'source_location', 'source_location_name',
             'destination_location', 'destination_location_name',
-            'assembly_reference', 'notes', 'rejection_reason',
+            'assembly_reference', 'linked_assembly_line_name', 'notes', 'rejection_reason',
             'created_by', 'created_by_name',
             'approved_by', 'approved_by_name',
             'dispatched_by', 'dispatched_by_name',
@@ -70,6 +74,7 @@ class ConsumableRequestSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'request_number', 'status', 'status_display',
             'destination_location', 'destination_location_name',
+            'linked_assembly_line_name',
             'rejection_reason',
             'created_by', 'created_by_name',
             'approved_by', 'approved_by_name',
@@ -96,6 +101,20 @@ class ConsumableRequestSerializer(serializers.ModelSerializer):
 
     def get_total_returned(self, obj):
         return self._sum(obj, 'returned_quantity')
+
+    def get_linked_assembly_line_name(self, obj):
+        """The assembly line this request will auto-dispatch to, when raised
+        against an assembly order (assembly_reference) that has one set."""
+        if not obj.assembly_reference:
+            return None
+        from assembly.models import AssemblyOrder
+        order = (
+            AssemblyOrder.objects
+            .filter(assembly_number=obj.assembly_reference)
+            .select_related('assembly_line')
+            .first()
+        )
+        return order.assembly_line.name if order and order.assembly_line else None
 
     def create(self, validated_data):
         validated_data['request_number'] = ConsumableRequest.generate_request_number()

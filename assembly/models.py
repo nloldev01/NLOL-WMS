@@ -30,35 +30,6 @@ class VariantPackagingMaterial(models.Model):
         return f"{self.material.name} × {self.quantity_per_unit} per {self.finished_product_variant}"
 
 
-class AssemblyMaterialLine(models.Model):
-    """A consumable/material used in a specific assembly run — added by workers during assembly."""
-    assembly_order = models.ForeignKey(
-        'AssemblyOrder',
-        on_delete=models.CASCADE,
-        related_name='material_lines',
-    )
-    material = models.ForeignKey(
-        'master_data.RawMaterialAndConsumable',
-        on_delete=models.PROTECT,
-        related_name='assembly_lines',
-    )
-    quantity = models.DecimalField(max_digits=14, decimal_places=4)
-    location = models.ForeignKey(
-        'master_data.Location',
-        null=True, blank=True,
-        on_delete=models.SET_NULL,
-        related_name='assembly_material_lines',
-        help_text="Override location; defaults to assembly destination_location",
-    )
-
-    class Meta:
-        db_table = 'assembly_material_lines'
-        ordering = ['material__name']
-
-    def __str__(self):
-        return f"{self.material.name} × {self.quantity}"
-
-
 class AssemblyOrder(models.Model):
     STATUS_CHOICES = [
         ('draft',       'Draft'),
@@ -168,7 +139,11 @@ class AssemblyOrder(models.Model):
         from inventory_core.models import Batch
         from inventory_core.services.batch_service import BatchService
         from products_stock.models import ProductStockLog, FinishedProductStockLog
-        from raw_materials_stock.models import RawMaterialStockLog
+
+        if actual_quantity > self.target_quantity:
+            raise ValidationError(
+                f"Actual quantity ({actual_quantity}) cannot exceed the target quantity ({self.target_quantity})."
+            )
 
         variant = self.finished_product_variant
         # Destination = assembly zone (parent of the assembly line), not the line itself
@@ -246,31 +221,54 @@ class AssemblyOrder(models.Model):
             performed_by=performed_by,
         )
 
-        # 4. Deduct materials recorded by workers during assembly (best-effort — non-blocking)
+        # 3b. Backfill any labels printed before assembly (batch/LPN didn't exist yet)
+        #     so their IDENTITY/REDEEM QR codes resolve to the real produced batch.
+        from inventory_core.models import LPN
+        new_lpn = LPN.objects.filter(batch=new_batch).order_by('-created_at').first()
+        self.print_jobs.filter(batch__isnull=True).update(batch=new_batch, lpn=new_lpn)
+
+        # 4. Reconcile linked consumable requests. Any request dispatched against this
+        #    order is auto-consumed in full on completion (record_return with no
+        #    overrides defaults to "everything dispatched was used"). For a partial
+        #    return, record it manually via the Consumables page's "Record Return"
+        #    step before completing — that moves the request out of 'dispatched', so
+        #    it won't be touched here. This no longer depends on a Packaging BOM ratio,
+        #    since consumables can now be requested freely.
+        from consumables.models import ConsumableRequest
         deductions = []
-        for line in self.material_lines.select_related('material', 'material__unit', 'location').all():
-            loc = line.location  # only deduct if worker explicitly set a location
-            deduction = {
-                'material_name': line.material.name,
-                'unit_symbol':   line.material.unit.symbol if line.material.unit else '',
-                'quantity_used': float(line.quantity),
-                'deducted':      False,
-            }
-            if loc:
-                try:
-                    RawMaterialStockLog.create_movement(
-                        material=line.material,
-                        location=loc,
-                        movement_type='packaging_usage',
-                        quantity=line.quantity,
-                        reference=self.assembly_number,
-                        notes=f"Assembly {self.assembly_number}",
-                        performed_by=performed_by,
-                    )
-                    deduction['deducted'] = True
-                except (ValidationError, Exception):
-                    pass  # Stock insufficient — recorded but not deducted
-            deductions.append(deduction)
+        linked = list(
+            ConsumableRequest.objects
+            .filter(assembly_reference=self.assembly_number, status='dispatched')
+            .prefetch_related('items__material__unit')
+        )
+        for req in linked:
+            try:
+                req.record_return(performed_by=performed_by)
+                for item in req.items.select_related('material', 'material__unit').all():
+                    deductions.append({
+                        'material_name': item.material.name,
+                        'unit_symbol':   item.material.unit.symbol if item.material.unit else '',
+                        'quantity_used': float(item.used_quantity or 0),
+                        'deducted':      True,
+                        'via':           f"Consumable request {req.request_number}",
+                    })
+            except Exception:
+                pass  # best-effort, non-blocking
+
+        if not linked:
+            # Nothing was dispatched. If the BOM suggests a requirement, surface it
+            # as a warning instead of silently deducting.
+            from math import ceil as _ceil
+            for b in variant.packaging_materials.select_related('material', 'material__unit').all():
+                if b.material.type != 'consumable':
+                    continue
+                deductions.append({
+                    'material_name': b.material.name,
+                    'unit_symbol':   b.material.unit.symbol if b.material.unit else '',
+                    'quantity_used': float(int(_ceil(b.quantity_per_unit * actual_quantity))),
+                    'deducted':      False,
+                    'via':           'No dispatched consumable request — not deducted',
+                })
 
         self.produced_batch = new_batch
         self.actual_quantity = actual_quantity
