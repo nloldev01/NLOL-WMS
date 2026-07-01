@@ -7,7 +7,9 @@ from django.db import transaction
 from django.db.models import F, Count
 from django_filters.rest_framework import DjangoFilterBackend
 
-from accounts.permissions import ModulePermission
+from rest_framework.permissions import IsAuthenticated
+
+from accounts.permissions import ModulePermission, IsConsumablesHandler
 from master_data.models import Location
 
 from .models import ConsumableRequest, ConsumableRequestItem
@@ -18,13 +20,22 @@ class ConsumableRequestViewSet(viewsets.ModelViewSet):
     serializer_class   = ConsumableRequestSerializer
     permission_classes = ModulePermission.read_write('consumables')
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields   = ['status', 'source_location', 'destination_location']
+    filterset_fields   = ['source_location', 'destination_location']
     search_fields      = ['request_number', 'assembly_reference']
     ordering_fields    = ['created_at']
     ordering           = ['-created_at']
 
+    # Actions that move stock / decide a request's fate — restricted to the dedicated
+    # consumables handler role (separation of duties from the requester who raises them).
+    HANDLER_ACTIONS = {'approve', 'reject', 'dispatch_request', 'record_return'}
+
+    def get_permissions(self):
+        if self.action in self.HANDLER_ACTIONS:
+            return [IsAuthenticated(), IsConsumablesHandler()]
+        return super().get_permissions()
+
     def get_queryset(self):
-        return (
+        qs = (
             ConsumableRequest.objects
             .select_related(
                 'source_location', 'destination_location',
@@ -33,6 +44,14 @@ class ConsumableRequestViewSet(viewsets.ModelViewSet):
             .prefetch_related('items__material__unit')
             .all()
         )
+        # Handle status manually so the synthetic 'completed' value expands to
+        # both terminal states (returned + consumed).
+        status_param = self.request.query_params.get('status')
+        if status_param == 'completed':
+            qs = qs.filter(status__in=ConsumableRequest.COMPLETED_STATUSES)
+        elif status_param:
+            qs = qs.filter(status=status_param)
+        return qs
 
     def _respond(self, request, obj):
         return Response(ConsumableRequestSerializer(obj, context={'request': request}).data)

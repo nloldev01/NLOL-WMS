@@ -4,15 +4,15 @@ from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
+from accounts.permissions import ModulePermission
 from .models import VariantPackagingMaterial, AssemblyOrder
 from .serializers import VariantPackagingMaterialSerializer, AssemblyOrderSerializer
 
 
 class VariantPackagingMaterialViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('assembly')
     serializer_class   = VariantPackagingMaterialSerializer
     filter_backends    = [DjangoFilterBackend]
     filterset_fields   = ['finished_product_variant', 'material']
@@ -22,7 +22,7 @@ class VariantPackagingMaterialViewSet(viewsets.ModelViewSet):
 
 
 class AssemblyOrderViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('assembly')
     serializer_class   = AssemblyOrderSerializer
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields   = ['status', 'assembly_line', 'finished_product_variant', 'packaging_order',

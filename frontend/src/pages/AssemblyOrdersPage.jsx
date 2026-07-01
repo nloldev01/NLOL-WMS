@@ -368,7 +368,7 @@ const AssemblyOrdersPage = () => {
     setReqOrder(order); setReqError(''); setReqCreated('')
     setReqItems((order.required_consumables || []).map(c => ({
       material: c.material, material_name: c.material_name, unit_symbol: c.unit_symbol,
-      quantity: String(c.required_quantity),
+      quantity: String(Math.trunc(parseFloat(c.required_quantity) || 0)),
     })))
     setReqPickMaterial(''); setReqPickQty('')
   }

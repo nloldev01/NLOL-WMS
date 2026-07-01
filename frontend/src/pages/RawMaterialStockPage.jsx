@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
-import { apiFetch } from '../utils/api'
+import { apiFetch, getUserRole } from '../utils/api'
 
 const PAGE_SIZE = 10
 
@@ -57,7 +57,9 @@ const RawMaterialStockPage = () => {
 
   const fetchMaterials = async () => {
     try {
-      const res = await apiFetch('/master-data/raw-materials-and-consumables/')
+      // The consumables manager only handles consumable-type materials.
+      const scope = getUserRole() === 'consumables_handler' ? '?type=consumable' : ''
+      const res = await apiFetch(`/master-data/raw-materials-and-consumables/${scope}`)
       if (res && res.ok) {
         const data = await res.json()
         setMaterials(Array.isArray(data) ? data : (data.results ?? []))

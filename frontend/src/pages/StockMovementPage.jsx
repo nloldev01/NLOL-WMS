@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import { useNavigate } from 'react-router-dom'
-import { apiFetch, parseError } from '../utils/api'
+import { apiFetch, parseError, getUserRole } from '../utils/api'
 import BatchSuccessModal from '../components/BatchSuccessModal'
 import Pagination from '../components/Pagination'
 import PageSizeSelector, { DEFAULT_PAGE_SIZE } from '../components/PageSizeSelector'
@@ -324,7 +324,9 @@ const StockMovementPage = () => {
 
   const fetchMaterials = async () => {
     try {
-      const res = await apiFetch('/master-data/raw-materials-and-consumables/')
+      // The consumables manager only handles consumable-type materials.
+      const scope = getUserRole() === 'consumables_handler' ? '?type=consumable' : ''
+      const res = await apiFetch(`/master-data/raw-materials-and-consumables/${scope}`)
       if (res && res.ok) {
         const data = await res.json()
         setMaterials(Array.isArray(data) ? data : (data.results ?? []))

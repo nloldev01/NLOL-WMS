@@ -3,7 +3,7 @@ import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
 import Pagination from '../components/Pagination'
 import PageSizeSelector, { DEFAULT_PAGE_SIZE } from '../components/PageSizeSelector'
-import { apiFetch, getApiError, hasAccess } from '../utils/api'
+import { apiFetch, getApiError, hasAccess, getUserRole } from '../utils/api'
 
 const STATUS_CONFIG = {
   submitted:  { label: 'Submitted',  color: 'bg-amber-50 text-amber-700' },
@@ -17,10 +17,22 @@ const STATUS_CONFIG = {
 // Terminal states reached once a return has been recorded.
 const COMPLETED_STATUSES = ['returned', 'consumed']
 
+// Options for the status filter. 'completed' is a synthetic value the backend
+// expands to returned + consumed so both terminal states show together.
+const FILTER_OPTIONS = [
+  { value: 'submitted',  label: 'Submitted' },
+  { value: 'approved',   label: 'Approved' },
+  { value: 'rejected',   label: 'Rejected' },
+  { value: 'dispatched', label: 'Dispatched' },
+  { value: 'completed',  label: 'Completed' },
+]
+
 const emptyForm = { assembly_reference: '', notes: '', items: [] }
 
 export default function ConsumablesPage() {
   const canWrite = hasAccess('consumables', 'full')
+  // Only the dedicated consumables handler (or superadmin) can approve/reject/dispatch/return.
+  const canHandle = ['consumables_handler', 'superadmin'].includes(getUserRole())
 
   const [requests, setRequests]   = useState([])
   const [totalCount, setTotalCount] = useState(0)
@@ -74,8 +86,8 @@ export default function ConsumablesPage() {
     if (!detail) return
     const ap = {}, us = {}
     detail.items?.forEach(i => {
-      ap[i.id] = i.approved_quantity ?? i.requested_quantity
-      us[i.id] = i.used_quantity ?? i.dispatched_quantity ?? 0
+      ap[i.id] = String(Math.trunc(parseFloat(i.approved_quantity ?? i.requested_quantity) || 0))
+      us[i.id] = String(Math.trunc(parseFloat(i.used_quantity ?? i.dispatched_quantity ?? 0) || 0))
     })
     setApproveItems(ap); setUsedItems(us)
     setDestination(''); setShowReject(false); setRejectReason('')
@@ -239,6 +251,13 @@ export default function ConsumablesPage() {
   const blockDecimal = (e) => { if (['.', ',', 'e', 'E', '+', '-'].includes(e.key)) e.preventDefault() }
   // Strictly whole numbers — strips anything that isn't a digit (paste-proof).
   const wholeOnly = (v) => String(v).replace(/\D/g, '')
+  // Whole number capped at an upper bound (e.g. used can't exceed dispatched).
+  const clampWhole = (v, max) => {
+    const n = wholeOnly(v)
+    if (n === '') return ''
+    const cap = Math.trunc(parseFloat(max) || 0)
+    return String(Math.min(parseInt(n, 10), cap))
+  }
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -246,7 +265,6 @@ export default function ConsumablesPage() {
       <div className="md:ml-16">
         <Topbar />
         <main className="p-6">
-          <p className="text-xs text-gray-400 mb-3">Consumables / Requests</p>
 
           {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
@@ -254,7 +272,7 @@ export default function ConsumablesPage() {
               { key: 'submitted',  label: 'Pending Approval', value: stats.pending_approval,                                                   color: 'text-amber-600',   ring: 'ring-amber-200' },
               { key: 'approved',   label: 'Approved',         value: stats.by_status?.approved   || 0,                                         color: 'text-blue-600',    ring: 'ring-blue-200' },
               { key: 'dispatched', label: 'Dispatched',       value: stats.by_status?.dispatched || 0,                                         color: 'text-violet-600',  ring: 'ring-violet-200' },
-              { key: 'returned',   label: 'Completed',        value: (stats.by_status?.returned  || 0) + (stats.by_status?.consumed || 0),     color: 'text-green-600',   ring: 'ring-green-200' },
+              { key: 'completed',  label: 'Completed',        value: (stats.by_status?.returned  || 0) + (stats.by_status?.consumed || 0),     color: 'text-green-600',   ring: 'ring-green-200' },
               { key: 'rejected',   label: 'Rejected',         value: stats.by_status?.rejected   || 0,                                         color: 'text-red-500',     ring: 'ring-red-200' },
             ].map(c => (
               <button
@@ -272,7 +290,6 @@ export default function ConsumablesPage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Consumable Requests</h2>
-                <p className="text-[10px] text-gray-400 mt-0.5">Request → approve → dispatch → use → return unused</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="relative">
@@ -295,7 +312,7 @@ export default function ConsumablesPage() {
                         <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wide">Status</label>
                         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300">
                           <option value="">All</option>
-                          {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                          {FILTER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                       </div>
                     </div>
@@ -334,7 +351,7 @@ export default function ConsumablesPage() {
                     const dispatched = ['dispatched', ...COMPLETED_STATUSES].includes(req.status)
                     const returned   = COMPLETED_STATUSES.includes(req.status)
                     return (
-                      <tr key={req.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => openDetail(req)}>
+                      <tr key={req.id} className={`transition-colors cursor-pointer ${req.status === 'submitted' ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'}`} onClick={() => openDetail(req)}>
                         <td className="px-4 py-3 text-gray-400 text-xs">{(page - 1) * pageSize + idx + 1}</td>
                         <td className="px-4 py-3"><span className="font-mono text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">{req.request_number}</span></td>
                         <td className="px-4 py-3 text-xs text-gray-700">{req.assembly_reference || <span className="text-gray-300">—</span>}</td>
@@ -481,14 +498,14 @@ export default function ConsumablesPage() {
                         <td className="py-2 font-medium text-gray-800">{item.material_name} <span className="text-gray-400">{item.unit_symbol}</span></td>
                         <td className="py-2 text-right text-gray-700">{num(item.requested_quantity)}</td>
                         <td className="py-2 text-right">
-                          {detail.status === 'submitted' && canWrite ? (
+                          {detail.status === 'submitted' && canHandle ? (
                             <input type="number" min="0" step="1" value={approveItems[item.id] ?? ''} onKeyDown={blockDecimal} onChange={e => setApproveItems(p => ({ ...p, [item.id]: wholeOnly(e.target.value) }))} className="w-20 rounded-lg border border-blue-200 px-2 py-1 text-xs text-right focus:border-blue-400 focus:outline-none" />
                           ) : <span className="text-blue-700 font-semibold">{num(item.approved_quantity)}</span>}
                         </td>
                         <td className="py-2 text-right text-violet-700 font-semibold">{num(item.dispatched_quantity)}</td>
                         <td className="py-2 text-right">
-                          {detail.status === 'dispatched' && canWrite ? (
-                            <input type="number" min="0" step="1" value={usedItems[item.id] ?? ''} onKeyDown={blockDecimal} onChange={e => setUsedItems(p => ({ ...p, [item.id]: wholeOnly(e.target.value) }))} className="w-20 rounded-lg border border-amber-200 px-2 py-1 text-xs text-right focus:border-amber-400 focus:outline-none" />
+                          {detail.status === 'dispatched' && canHandle ? (
+                            <input type="number" min="0" max={Math.trunc(parseFloat(item.dispatched_quantity) || 0)} step="1" value={usedItems[item.id] ?? ''} onKeyDown={blockDecimal} onChange={e => setUsedItems(p => ({ ...p, [item.id]: clampWhole(e.target.value, item.dispatched_quantity) }))} className="w-20 rounded-lg border border-amber-200 px-2 py-1 text-xs text-right focus:border-amber-400 focus:outline-none" />
                           ) : <span className="text-gray-700">{num(item.used_quantity)}</span>}
                         </td>
                         <td className="py-2 text-right text-green-700 font-semibold">{num(item.returned_quantity)}</td>
@@ -499,7 +516,7 @@ export default function ConsumablesPage() {
               </div>
 
               {/* Source location — the approver decides where stock is deducted from */}
-              {detail.status === 'submitted' && canWrite && (
+              {detail.status === 'submitted' && canHandle && (
                 <div className="px-6 py-3 border-t border-gray-100">
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Deduct stock from (source location) *</label>
                   <select
@@ -531,7 +548,7 @@ export default function ConsumablesPage() {
               )}
 
               {/* Dispatch destination — auto-detected when linked to an assembly order, manual otherwise */}
-              {detail.status === 'approved' && canWrite && (
+              {detail.status === 'approved' && canHandle && (
                 <div className="px-6 py-3 border-t border-gray-100">
                   {detail.assembly_reference ? (
                     <>
@@ -564,8 +581,8 @@ export default function ConsumablesPage() {
               )}
             </div>
 
-            {/* Action bar */}
-            {canWrite && !['rejected', ...COMPLETED_STATUSES].includes(detail.status) && (
+            {/* Action bar — approve/reject/dispatch/return are handler-only */}
+            {canHandle && !['rejected', ...COMPLETED_STATUSES].includes(detail.status) && (
               <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
                 {detail.status === 'submitted' && (
                   <>

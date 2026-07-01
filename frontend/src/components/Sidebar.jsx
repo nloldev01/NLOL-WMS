@@ -54,11 +54,15 @@ const Sidebar = () => {
       label: 'Dashboard',
       path: '/dashboard',
     },
-    ...(hasAccess('master_data') ? [
+    // The consumables manager and assembly roles keep master_data view access (so
+    // location & material pickers load) but shouldn't see the Master Data / Base Product pages.
+    ...(hasAccess('master_data') && !['consumables_handler', 'assembly'].includes(getUserRole()) ? [
       { id: 'master-data', label: 'Master Data', path: '/master-data' },
       { id: 'products',    label: 'Base Products', path: '/products' },
     ] : []),
-    ...(hasAccess('raw_material_stock') || hasAccess('base_product_stock') || hasAccess('inventory_tools') || hasAccess('inventory_core') ? [{
+    // Assembly keeps base_product_stock/inventory_core read access for its own
+    // pickers & production queue, but shouldn't see the whole Stocks section.
+    ...((hasAccess('raw_material_stock') || hasAccess('base_product_stock') || hasAccess('inventory_tools') || hasAccess('inventory_core')) && getUserRole() !== 'assembly' ? [{
       id: 'stocks',
       label: 'Stocks',
       children: [
@@ -67,7 +71,7 @@ const Sidebar = () => {
         ...(hasAccess('raw_material_stock')  ? [{ id: 'raw-material-stock', label: 'Raw Material Stock', path: '/stock/raw-materials' }] : []),
         ...(hasAccess('base_product_stock')  ? [{ id: 'product-stock-logs', label: 'Base Product Logs', path: '/stock/product-logs' }] : []),
         ...(hasAccess('raw_material_stock')  ? [{ id: 'raw-material-stock-logs', label: 'Raw Material Logs', path: '/stock/raw-materials-logs' }] : []),
-        ...(hasAccess('inventory_tools')     ? [{ id: 'batches', label: 'Batches', path: '/stock/batches' }] : []),
+        ...(hasAccess('inventory_tools') && getUserRole() !== 'consumables_handler' ? [{ id: 'batches', label: 'Batches', path: '/stock/batches' }] : []),
         ...(hasAccess('inventory_tools')     ? [{ id: 'inventory-explorer', label: 'Inventory Explorer', path: '/stock/inventory-explorer' }] : []),
         ...(hasAccess('inventory_tools')     ? [{ id: 'lpn-finder', label: 'LPN Finder', path: '/stock/lpn-finder' }] : []),
         ...(hasAccess('inventory_core')      ? [{ id: 'pallets', label: 'Pallets', path: '/inventory/pallets' }] : []),

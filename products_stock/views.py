@@ -3,9 +3,9 @@ from django.core.exceptions import ValidationError
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
+from accounts.permissions import ModulePermission
 from nlol_wms.pagination import StandardResultsPagination
 from inventory_core.models import Batch
 from inventory_core.services.batch_service import BatchService
@@ -23,7 +23,7 @@ from .serializers import (
 # ── Bulk Product Stock ────────────────────────────────────────────────────────
 
 class ProductStockViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('base_product_stock')
     queryset = ProductStock.objects.select_related('product', 'product__unit', 'location', 'batch').all()
     serializer_class = ProductStockSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -33,7 +33,7 @@ class ProductStockViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ProductStockLogViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('base_product_stock')
     queryset = ProductStockLog.objects.select_related(
         'product', 'product__unit',
         'location', 'counterpart_location',
@@ -132,7 +132,7 @@ class ProductStockLogViewSet(viewsets.ModelViewSet):
 # ── Finished Product Stock ────────────────────────────────────────────────────
 
 class FinishedProductStockViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('finished_product_stock')
     queryset = FinishedProductStock.objects.select_related(
         'finished_product_variant',
         'finished_product_variant__finished_product',
@@ -149,7 +149,7 @@ class FinishedProductStockViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class FinishedProductStockLogViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('finished_product_stock')
     queryset = FinishedProductStockLog.objects.select_related(
         'finished_product_variant',
         'finished_product_variant__finished_product',

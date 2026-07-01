@@ -13,6 +13,7 @@ const ROLE_DESCRIPTIONS = {
   sales:      'Sales dashboard, customers & bills — view finished stock',
   warehouse:  'All three stock modules + inventory tools',
   manager:    'View-only access across all operational modules',
+  consumables_handler: 'Approves, rejects & dispatches consumable requests',
 }
 
 const emptyForm = {
@@ -417,6 +418,7 @@ const UserPage = () => {
                               user.user_role.role === 'manager'    ? 'bg-indigo-100 text-indigo-700' :
                               user.user_role.role === 'production' ? 'bg-yellow-100 text-yellow-700' :
                               user.user_role.role === 'assembly'   ? 'bg-green-100 text-green-700' :
+                              user.user_role.role === 'consumables_handler' ? 'bg-pink-100 text-pink-700' :
                               'bg-gray-100 text-gray-600'
                             }`}>{user.user_role.role}</span>
                             {ROLE_DESCRIPTIONS[user.user_role.role] && (

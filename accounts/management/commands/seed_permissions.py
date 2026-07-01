@@ -76,18 +76,26 @@ DEFAULTS = {
     },
     'assembly': {
         'dashboard':              'view',
-        'master_data':            'none',
+        'master_data':            'view',   # loads finished-product/variant/location & consumable material pickers
         'users':                  'none',
         'raw_material_stock':     'none',
-        'base_product_stock':     'none',
+        'base_product_stock':     'view',   # production queue: PRD stock available at assembly lines
         'production':             'none',
         'assembly':               'full',
         'packaging':              'full',
         'finished_product_stock': 'full',
         'sales':                  'none',
         'inventory_tools':        'view',
+        'inventory_core':         'view',   # source PRD batches to assemble from
         'production_recipes':     'none',
         'consumables':            'full',
+    },
+    'consumables_handler': {
+        'dashboard':              'view',
+        'master_data':            'view',   # loads location & material pickers
+        'raw_material_stock':     'full',   # purchase-in + stock movements (scoped to consumables)
+        'consumables':            'full',
+        'inventory_tools':        'view',
     },
     'user': {
         'dashboard':              'view',

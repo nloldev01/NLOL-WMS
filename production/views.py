@@ -14,7 +14,7 @@ from .serializers import (
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
-    permission_classes = ModulePermission.require('production_recipes')
+    permission_classes = ModulePermission.read_write('production_recipes')
     queryset = Recipe.objects.all().prefetch_related(
         'items', 'items__material', 'items__material__unit'
     )

@@ -22,6 +22,15 @@ def has_module_access(user, module_key, min_access='view'):
     return _ORDER.get(level, 0) >= _ORDER.get(min_access, 1)
 
 
+def is_consumables_scoped(user):
+    """True for the consumables_handler role, whose raw-material access is limited
+    to consumable-type materials. Superadmin/admin/warehouse are unrestricted."""
+    if not user or not user.is_authenticated:
+        return False
+    role = getattr(user, 'user_role', None)
+    return bool(role and role.role == 'consumables_handler')
+
+
 def get_user_permissions(user):
     """Return a dict of {module_key: access_level} for a user."""
     role = getattr(user, 'user_role', None)
@@ -38,6 +47,20 @@ class IsSuperAdmin(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return bool(user and user.is_authenticated and getattr(user, 'user_role', None) and user.user_role.role == 'superadmin')
+
+
+class IsConsumablesHandler(BasePermission):
+    """Restrict approve/reject/dispatch/return of consumable requests to the dedicated handler role.
+
+    Separation of duties: requesters (e.g. assembly) raise & submit requests, but only a
+    'consumables_handler' (or superadmin) can act on them.
+    """
+    message = "Only the consumables handler can approve, reject, dispatch or close requests."
+
+    def has_permission(self, request, view):
+        user = request.user
+        role = getattr(user, 'user_role', None)
+        return bool(user and user.is_authenticated and role and role.role in ('consumables_handler', 'superadmin'))
 
 
 class ModulePermission:

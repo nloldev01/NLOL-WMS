@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Topbar from '../components/Topbar'
 import Sidebar from '../components/Sidebar'
-import { apiFetch, parseError, hasAccess } from '../utils/api'
+import { apiFetch, parseError, hasAccess, getUserRole } from '../utils/api'
 
 const DOMAINS = [
   {
@@ -92,7 +92,9 @@ const BulkPurchasePage = () => {
   useEffect(() => {
     if (!domain) return
     setItems([])
-    apiFetch(domain.itemsEndpoint)
+    // The consumables manager only handles consumable-type materials.
+    const scope = domain.key === 'raw_material' && getUserRole() === 'consumables_handler' ? '?type=consumable' : ''
+    apiFetch(`${domain.itemsEndpoint}${scope}`)
       .then(r => r?.ok ? r.json() : null)
       .then(d => d && setItems(Array.isArray(d) ? d : (d.results ?? [])))
   }, [domainKey])
@@ -137,6 +139,9 @@ const BulkPurchasePage = () => {
     if (!location) { setError('Select a location for this bill.'); return }
     if (validRows.length === 0) { setError('Add at least one item with a quantity.'); return }
 
+    // Consumables aren't batch/LPN-tracked — the consumables manager records
+    // plain stock-in with no batch (and therefore no LPN) generated.
+    const trackless = getUserRole() === 'consumables_handler'
     const payload = validRows.map(r => ({
       [domain.itemField]: parseInt(r.item),
       location: parseInt(location),
@@ -145,8 +150,8 @@ const BulkPurchasePage = () => {
       supplier: supplier ? parseInt(supplier) : null,
       reference: reference.trim(),
       notes: notes.trim(),
-      auto_generate_batch: true,
-      auto_generate_lpn: true,
+      auto_generate_batch: !trackless,
+      auto_generate_lpn: !trackless,
     }))
 
     setSubmitting(true)

@@ -3,11 +3,11 @@ from django.core.exceptions import ValidationError
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
 
+from accounts.permissions import ModulePermission, is_consumables_scoped
 from nlol_wms.pagination import StandardResultsPagination
 from master_data.models import Location
 from inventory_core.models import Batch
@@ -22,7 +22,7 @@ from .serializers import (
 )
 
 class LocationViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('raw_material_stock')
     serializer_class   = LocationSerializer
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields   = ['is_active']
@@ -53,7 +53,7 @@ class RawMaterialStockViewSet(viewsets.ReadOnlyModelViewSet):
         ?search=flour
         ?ordering=material__name
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('raw_material_stock')
     serializer_class   = RawMaterialStockSerializer
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields   = ['material', 'location', 'material__type']
@@ -62,9 +62,12 @@ class RawMaterialStockViewSet(viewsets.ReadOnlyModelViewSet):
     ordering           = ['material__name']
 
     def get_queryset(self):
-        return RawMaterialStock.objects.select_related(
+        qs = RawMaterialStock.objects.select_related(
             'material', 'material__unit', 'location'
         ).all()
+        if is_consumables_scoped(self.request.user):
+            qs = qs.filter(material__type='consumable')
+        return qs
 
     @action(detail=False, methods=['get'], url_path='summary')
     def summary(self, request):
@@ -78,8 +81,11 @@ class RawMaterialStockViewSet(viewsets.ReadOnlyModelViewSet):
             ...
         ]
         """
+        base = RawMaterialStock.objects.all()
+        if is_consumables_scoped(request.user):
+            base = base.filter(material__type='consumable')
         qs = (
-            RawMaterialStock.objects
+            base
             .values('material__id', 'material__name', 'material__unit__name')
             .annotate(total_quantity=Sum('quantity'))
             .order_by('material__name')
@@ -111,7 +117,7 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
     Custom actions:
         POST /stock-movements/record/   → record a new movement
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = ModulePermission.read_write('raw_material_stock')
     serializer_class   = RawMaterialStockLogSerializer
     pagination_class   = StandardResultsPagination
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -121,11 +127,14 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
     ordering           = ['-created_at']
 
     def get_queryset(self):
-        return RawMaterialStockLog.objects.select_related(
+        qs = RawMaterialStockLog.objects.select_related(
             'material', 'material__unit',
             'location', 'counterpart_location',
             'performed_by',
         ).all()
+        if is_consumables_scoped(self.request.user):
+            qs = qs.filter(material__type='consumable')
+        return qs
 
     def _create_log_from_validated(self, validated_data, user):
         """
@@ -138,6 +147,10 @@ class RawMaterialStockLogViewSet(viewsets.ReadOnlyModelViewSet):
         material = validated_data['material']
         auto_generate = validated_data.get('auto_generate_batch', False)
         auto_generate_lpn = validated_data.get('auto_generate_lpn', False)
+
+        # Hard guard: the consumables manager may only move consumable-type materials.
+        if is_consumables_scoped(user) and material.type != 'consumable':
+            raise ValidationError('Only consumable materials can be moved by the consumables manager.')
 
         # Logic: If batch is selected, take its supplier
         if batch and batch.supplier:
